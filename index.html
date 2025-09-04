@@ -84,6 +84,10 @@
             font-weight: bold;
             cursor: help;
         }
+        .activity-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
         .add-atom-bar { text-align: center; margin: 1rem 0; }
         button, select {
             padding: 8px 12px;
@@ -119,17 +123,56 @@
         }
         .rule-card-header { display: flex; justify-content: space-between; align-items: center; }
         .rule-card-header span { font-weight: bold; font-size: 0.9rem; }
-        #json-output-container {
-            grid-column: 1 / -1;
-            height: 300px;
-            display: none; /* Hidden by default */
-        }
-        #json-output {
+
+        /* --- Modal Styles --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 999;
+            display: none;
+        }
+        .modal-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--panel-bg);
+            z-index: 1000;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            width: 90%;
+            max-width: 700px;
+            display: none;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .modal-header h3 { margin: 0; color: var(--primary-color); }
+        .modal-close-btn {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+        .modal-content { padding: 1rem; }
+        #json-output {
+            width: 100%;
+            height: 400px;
             box-sizing: border-box;
             font-family: monospace;
             font-size: 0.9rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -153,6 +196,9 @@
                 </div>
                 <button id="add-activity-btn">Add Activity</button>
             </div>
+            <div style="padding: 1rem; border-top: 1px solid var(--border-color);">
+                <button id="generate-json-btn" class="primary" style="width: 100%;">Generate Document JSON</button>
+            </div>
         </div>
 
         <!-- Center Panel: The Canvas -->
@@ -163,7 +209,6 @@
             <div class="add-atom-bar">
                 <select id="add-atom-type">
                     <option value="text">Text</option>
-                    <!-- More types would go here -->
                 </select>
                 <button id="add-atom-btn" class="primary">Add Content Atom</button>
             </div>
@@ -178,8 +223,16 @@
         </div>
     </div>
     
-    <div id="json-output-container">
-        <textarea id="json-output" readonly></textarea>
+    <!-- Modal for JSON Output -->
+    <div id="modal-overlay" class="modal-overlay"></div>
+    <div id="modal-container" class="modal-container">
+        <div class="modal-header">
+            <h3>Document JSON Output</h3>
+            <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-content">
+            <textarea id="json-output" readonly></textarea>
+        </div>
     </div>
 
 <script>
@@ -202,6 +255,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('canvas');
     const addAtomBtn = document.getElementById('add-atom-btn');
     const propertiesContent = document.getElementById('properties-content');
+    const generateJsonBtn = document.getElementById('generate-json-btn');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalContainer = document.getElementById('modal-container');
+    const modalCloseBtn = document.getElementById('modal-close-btn');
+    const jsonOutputTextarea = document.getElementById('json-output');
 
     // --- UTILITY FUNCTIONS ---
     function generateUUID() {
@@ -214,14 +272,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderActivities() {
         activityList.innerHTML = '';
         if (documentState.activities.length === 0) {
-            activityList.innerHTML = '<p>No activities defined.</p>';
-        } else {
-            documentState.activities.forEach(act => {
-                const actEl = document.createElement('div');
-                actEl.innerHTML = `<strong>${act.name}</strong><br><small>ID: ${act.id}</small>`;
-                activityList.appendChild(actEl);
-            });
+            activityList.innerHTML = '<p style="font-size: 0.9em; color: #777;">No activities defined yet.</p>';
+            return;
         }
+        
+        const fragment = document.createDocumentFragment();
+        documentState.activities.forEach(act => {
+            const actEl = document.createElement('div');
+            actEl.className = 'activity-item';
+            actEl.innerHTML = `<strong>${act.name}</strong><br><small style="color: #666; word-break: break-all;">ID: ${act.id}</small>`;
+            fragment.appendChild(actEl);
+        });
+        activityList.appendChild(fragment);
     }
 
     function renderCanvas() {
@@ -237,7 +299,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (atom.type === 'text') {
                 const tag = atom.content.subtype === 'heading' ? 'h2' : 'p';
-                atomEl.innerHTML = `<${tag}>${atom.content.text || 'Empty text atom...'}</${tag}>`;
+                const textContent = atom.content.text.replace(/</g, "&lt;").replace(/>/g, "&gt;") || '<em style="color:#999;">Empty text atom...</em>';
+                atomEl.innerHTML = `<${tag}>${textContent}</${tag}>`;
             }
             
             if (atom.displayRules.length > 0) {
@@ -365,7 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    propertiesContent.addEventListener('change', (e) => {
+    propertiesContent.addEventListener('input', (e) => { // Use 'input' for live updates from textarea
         if (e.target.classList.contains('property-input')) {
             const atom = documentState.atoms.find(a => a.id === selectedAtomId);
             const property = e.target.dataset.property;
@@ -375,8 +438,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 atom[property] = e.target.value;
             }
-            renderCanvas(); // only need to re-render canvas to show text changes
-        } else if (e.target.classList.contains('rule-input')) {
+            renderCanvas();
+        }
+    });
+
+    propertiesContent.addEventListener('change', (e) => { // 'change' is fine for selects
+        if (e.target.classList.contains('rule-input')) {
             const ruleCard = e.target.closest('.rule-card');
             const ruleIndex = ruleCard.dataset.ruleIndex;
             const property = e.target.dataset.property;
@@ -404,27 +471,29 @@ document.addEventListener('DOMContentLoaded', () => {
             fullRender();
         }
         if(e.target.id === 'delete-atom-btn') {
-            documentState.atoms = documentState.atoms.filter(a => a.id !== selectedAtomId);
-            selectedAtomId = null;
-            fullRender();
+            if (confirm('Are you sure you want to delete this atom?')) {
+                documentState.atoms = documentState.atoms.filter(a => a.id !== selectedAtomId);
+                selectedAtomId = null;
+                fullRender();
+            }
         }
     });
     
-    // --- FINAL OUTPUT ---
-    const generateJsonBtn = document.createElement('button');
-    generateJsonBtn.textContent = 'Generate Document JSON';
-    generateJsonBtn.className = 'primary';
-    generateJsonBtn.style.width = '100%';
-    generateJsonBtn.style.marginTop = '1rem';
-    document.getElementById('document-panel').appendChild(generateJsonBtn);
-    
-    generateJsonBtn.addEventListener('click', () => {
-        const outputContainer = document.getElementById('json-output-container');
-        const outputTextarea = document.getElementById('json-output');
-        outputTextarea.value = JSON.stringify(documentState, null, 2);
-        outputContainer.style.display = 'block';
-    });
+    // --- MODAL LOGIC ---
+    function openModal() {
+        jsonOutputTextarea.value = JSON.stringify(documentState, null, 2);
+        modalOverlay.style.display = 'block';
+        modalContainer.style.display = 'block';
+    }
 
+    function closeModal() {
+        modalOverlay.style.display = 'none';
+        modalContainer.style.display = 'none';
+    }
+
+    generateJsonBtn.addEventListener('click', openModal);
+    modalCloseBtn.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', closeModal);
 
     // --- INITIALIZATION ---
     fullRender();
