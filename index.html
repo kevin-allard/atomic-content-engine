@@ -91,6 +91,15 @@
             color: var(--primary-color);
         }
         .panel-content { padding: 1rem; flex-grow: 1; }
+        .panel-footer {
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 0.5rem;
+        }
+        .panel-footer button {
+            flex-grow: 1;
+        }
         #canvas { padding: 2rem; }
         .atom {
             padding: 0;
@@ -161,12 +170,13 @@
         .modal-container {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel-bg);
             z-index: 1000; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            width: 90%; max-width: 500px; display: none; flex-direction: column; max-height: 80vh;
+            width: 90%; max-width: 700px; display: none; flex-direction: column; max-height: 80vh; height: 70vh;
         }
         .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border-color); }
         .modal-header h3 { margin: 0; color: var(--primary-color); }
         .modal-close-btn { font-size: 1.5rem; font-weight: bold; color: #aaa; cursor: pointer; background: none; border: none; }
-        .modal-content { padding: 1rem; overflow-y: auto; }
+        .modal-content { padding: 1rem; overflow-y: auto; flex-grow: 1; }
+        #json-output { width: 100%; height: 100%; font-family: monospace; font-size: 0.9rem; border: 1px solid var(--border-color); border-radius: 4px; resize: none; }
         .modal-footer { padding: 1rem; border-top: 1px solid var(--border-color); text-align: right; }
         #activity-link-list { list-style-type: none; padding: 0; margin: 0; }
         #activity-link-list li { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
@@ -205,8 +215,9 @@
                 <h4>Levels of Support</h4>
                 <div id="support-levels-list" class="checkbox-group"></div>
             </div>
-            <div style="padding: 1rem; border-top: 1px solid var(--border-color);">
-                <button id="generate-json-btn" class="primary" style="width: 100%;">Generate Document JSON</button>
+            <div class="panel-footer">
+                <button id="open-json-btn">Open JSON</button>
+                <button id="generate-json-btn" class="primary">Generate JSON</button>
             </div>
         </div>
 
@@ -232,8 +243,9 @@
             </div>
         </div>
         
-        <!-- Hidden file input for media uploads -->
+        <!-- Hidden file inputs -->
         <input type="file" id="media-file-input" accept="image/*" style="display: none;">
+        <input type="file" id="json-file-input" accept=".json,application/json" style="display: none;">
     </div>
     
     <!-- Modals -->
@@ -244,7 +256,10 @@
             <button class="modal-close-btn" data-modal="json">&times;</button>
         </div>
         <div class="modal-content">
-            <textarea id="json-output" readonly style="height: 50vh; resize: none;"></textarea>
+            <textarea id="json-output"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button id="save-json-btn" class="primary">Save to Computer</button>
         </div>
     </div>
 
@@ -267,7 +282,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.04";
+    const APP_VERSION = "rc1.beta.0.05";
 
     // --- MOCK DATABASE ---
     const mockActivityDatabase = [
@@ -498,6 +513,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function fullRender() {
+        document.getElementById('doc-title').value = documentState.title;
         renderLinkedActivities();
         renderSupportLevels();
         renderCanvas();
@@ -567,10 +583,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const atom = documentState.atoms.find(a => a.id === selectedAtomId);
             if (atom && atom.type === 'media') {
                 atom.content.src = URL.createObjectURL(file);
+                atom.content.fileName = file.name; // Store filename for reference
                 fullRender();
             }
         }
-        // Reset the input so the same file can be chosen again
         e.target.value = null;
     });
 
@@ -640,6 +656,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.modal)));
     document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', () => closeModal(el.id.split('-')[0])));
+    
+    document.getElementById('save-json-btn').addEventListener('click', () => {
+        const jsonString = document.getElementById('json-output').value;
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeTitle = documentState.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        a.download = `${safeTitle || 'document'}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    const jsonFileInput = document.getElementById('json-file-input');
+    document.getElementById('open-json-btn').addEventListener('click', () => jsonFileInput.click());
+    jsonFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const loadedState = JSON.parse(event.target.result);
+                // Basic validation
+                if (loadedState && loadedState.id && loadedState.title && Array.isArray(loadedState.atoms)) {
+                    documentState = loadedState;
+                    selectedAtomId = null; // Deselect atom from old document
+                    fullRender();
+                } else {
+                    alert('Error: The selected file is not a valid Atomic Builder document.');
+                }
+            } catch (error) {
+                alert('Error: Could not parse the JSON file.');
+                console.error("JSON parsing error:", error);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = null; // Reset for re-selection of the same file
+    });
 
     // Activity Link Modal Logic
     const linkActivityBtn = document.getElementById('link-activity-btn');
