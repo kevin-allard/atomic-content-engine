@@ -34,6 +34,7 @@
             height: 100%;
             gap: 1rem;
             padding: 1rem;
+            position: relative;
         }
         .panel {
             background-color: var(--panel-bg);
@@ -129,6 +130,14 @@
         .modal-footer { padding: 1rem; border-top: 1px solid var(--border-color); text-align: right; }
         #activity-link-list { list-style-type: none; padding: 0; margin: 0; }
         #activity-link-list li { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+        .version-display {
+            position: absolute;
+            bottom: 5px;
+            left: 20px;
+            font-size: 0.75rem;
+            color: #999;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
@@ -175,6 +184,8 @@
                 <p>Select an atom to see its properties.</p>
             </div>
         </div>
+
+        <div class="version-display">v rc1.beta.0.02</div>
     </div>
     
     <!-- Modals -->
@@ -290,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let content = '';
             if (atom.type === 'text') {
                 if (atom.content.subtype === 'annotation-cue') {
-                    const textContent = atom.content.text || '<em style="color:#999;">Type question or prompt here...</em>';
+                    const textContent = atom.content.text.replace(/</g, "&lt;").replace(/>/g, "&gt;") || '<em style="color:#999;">Type question or prompt here...</em>';
                     content = `
                         <div class="annotation-cue-container">
                             <div class="cue-play-icon">${ICONS.play}</div>
