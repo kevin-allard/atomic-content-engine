@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mosaic: Atomic Content Editor</title>
+    <style>
+        :root {
+            --bg-color: #f4f7fa;
+            --panel-bg: #ffffff;
+            --border-color: #dbe1e8;
+            --primary-color: #005a9c;
+            --primary-hover: #004b80;
+            --text-color: #333;
+            --label-color: #555;
+            --accent-color: #e67e22;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .editor-container {
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            width: 100%;
+            height: 100%;
+            gap: 1rem;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .panel-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--primary-color);
+        }
+        .panel-content {
+            padding: 1rem;
+            flex-grow: 1;
+        }
+        #canvas {
+            padding: 2rem;
+        }
+        .atom {
+            padding: 1rem;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            position: relative;
+            background-color: #fafafa;
+        }
+        .atom:hover {
+            border-color: #c0cbe1;
+        }
+        .atom.selected {
+            border-color: var(--primary-color);
+            background-color: #f0f8ff;
+        }
+        .atom[data-atom-type="text"] p, .atom[data-atom-type="text"] h2 { margin: 0; }
+        .atom .conditional-badge {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: var(--accent-color);
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 5px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: help;
+        }
+        .activity-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .add-atom-bar { text-align: center; margin: 1rem 0; }
+        button, select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background-color: #fdfdfd;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        button.primary {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+            font-weight: 600;
+        }
+        button.primary:hover { background-color: var(--primary-hover); }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-weight: 600; color: var(--label-color); margin-bottom: 0.5rem; font-size: 0.9rem; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+        .form-group textarea { min-height: 100px; resize: vertical; }
+        .rule-card {
+            background: var(--bg-color);
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            margin-top: 0.5rem;
+        }
+        .rule-card-header { display: flex; justify-content: space-between; align-items: center; }
+        .rule-card-header span { font-weight: bold; font-size: 0.9rem; }
+
+        /* --- Modal Styles --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 999;
+            display: none;
+        }
+        .modal-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--panel-bg);
+            z-index: 1000;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            width: 90%;
+            max-width: 700px;
+            display: none;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .modal-header h3 { margin: 0; color: var(--primary-color); }
+        .modal-close-btn {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+        .modal-content { padding: 1rem; }
+        #json-output {
+            width: 100%;
+            height: 400px;
+            box-sizing: border-box;
+            font-family: monospace;
+            font-size: 0.9rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="editor-container">
+        <!-- Left Panel: Document & Activities -->
+        <div id="document-panel" class="panel">
+            <div class="panel-header">Document Settings</div>
+            <div class="panel-content">
+                <div class="form-group">
+                    <label for="doc-title">Document Title</label>
+                    <input type="text" id="doc-title" value="New Document">
+                </div>
+                <hr>
+                <h4>Activity Manager</h4>
+                <div id="activity-list"></div>
+                <div class="form-group">
+                    <label for="new-activity-name">New Activity Name</label>
+                    <input type="text" id="new-activity-name" placeholder="e.g., Week 1 Reading">
+                </div>
+                <button id="add-activity-btn">Add Activity</button>
+            </div>
+            <div style="padding: 1rem; border-top: 1px solid var(--border-color);">
+                <button id="generate-json-btn" class="primary" style="width: 100%;">Generate Document JSON</button>
+            </div>
+        </div>
+
+        <!-- Center Panel: The Canvas -->
+        <div id="canvas-panel" class="panel">
+            <div id="canvas" class="panel-content">
+                <!-- Atoms will be rendered here -->
+            </div>
+            <div class="add-atom-bar">
+                <select id="add-atom-type">
+                    <option value="text">Text</option>
+                </select>
+                <button id="add-atom-btn" class="primary">Add Content Atom</button>
+            </div>
+        </div>
+
+        <!-- Right Panel: Properties Inspector -->
+        <div id="properties-panel" class="panel">
+            <div class="panel-header">Properties</div>
+            <div id="properties-content" class="panel-content">
+                <p>Select an atom to see its properties.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal for JSON Output -->
+    <div id="modal-overlay" class="modal-overlay"></div>
+    <div id="modal-container" class="modal-container">
+        <div class="modal-header">
+            <h3>Document JSON Output</h3>
+            <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-content">
+            <textarea id="json-output" readonly></textarea>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- STATE MANAGEMENT ---
+    let documentState = {
+        id: generateUUID(),
+        title: "New Document",
+        activities: [],
+        atoms: []
+    };
+    let selectedAtomId = null;
+
+    // --- DOM REFERENCES ---
+    const docTitleInput = document.getElementById('doc-title');
+    const activityList = document.getElementById('activity-list');
+    const newActivityNameInput = document.getElementById('new-activity-name');
+    const addActivityBtn = document.getElementById('add-activity-btn');
+    const canvas = document.getElementById('canvas');
+    const addAtomBtn = document.getElementById('add-atom-btn');
+    const propertiesContent = document.getElementById('properties-content');
+    const generateJsonBtn = document.getElementById('generate-json-btn');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalContainer = document.getElementById('modal-container');
+    const modalCloseBtn = document.getElementById('modal-close-btn');
+    const jsonOutputTextarea = document.getElementById('json-output');
+
+    // --- UTILITY FUNCTIONS ---
+    function generateUUID() {
+        return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+        );
+    }
+
+    // --- RENDER FUNCTIONS ---
+    function renderActivities() {
+        activityList.innerHTML = '';
+        if (documentState.activities.length === 0) {
+            activityList.innerHTML = '<p style="font-size: 0.9em; color: #777;">No activities defined yet.</p>';
+            return;
+        }
+        
+        const fragment = document.createDocumentFragment();
+        documentState.activities.forEach(act => {
+            const actEl = document.createElement('div');
+            actEl.className = 'activity-item';
+            actEl.innerHTML = `<strong>${act.name}</strong><br><small style="color: #666; word-break: break-all;">ID: ${act.id}</small>`;
+            fragment.appendChild(actEl);
+        });
+        activityList.appendChild(fragment);
+    }
+
+    function renderCanvas() {
+        canvas.innerHTML = '';
+        documentState.atoms.forEach(atom => {
+            const atomEl = document.createElement('div');
+            atomEl.className = 'atom';
+            atomEl.dataset.atomId = atom.id;
+            atomEl.dataset.atomType = atom.type;
+            if (atom.id === selectedAtomId) {
+                atomEl.classList.add('selected');
+            }
+
+            if (atom.type === 'text') {
+                const tag = atom.content.subtype === 'heading' ? 'h2' : 'p';
+                const textContent = atom.content.text.replace(/</g, "&lt;").replace(/>/g, "&gt;") || '<em style="color:#999;">Empty text atom...</em>';
+                atomEl.innerHTML = `<${tag}>${textContent}</${tag}>`;
+            }
+            
+            if (atom.displayRules.length > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'conditional-badge';
+                badge.textContent = 'R';
+                badge.title = `${atom.displayRules.length} display rule(s) applied.`;
+                atomEl.appendChild(badge);
+            }
+
+            canvas.appendChild(atomEl);
+        });
+    }
+
+    function renderPropertiesPanel() {
+        if (!selectedAtomId) {
+            propertiesContent.innerHTML = '<p>Select an atom to see its properties.</p>';
+            return;
+        }
+        const atom = documentState.atoms.find(a => a.id === selectedAtomId);
+        if (!atom) return;
+
+        let contentHtml = '';
+        if (atom.type === 'text') {
+            contentHtml = `
+                <div class="form-group">
+                    <label>Subtype</label>
+                    <select class="property-input" data-property="subtype" data-path="content">
+                        <option value="paragraph" ${atom.content.subtype === 'paragraph' ? 'selected' : ''}>Paragraph</option>
+                        <option value="heading" ${atom.content.subtype === 'heading' ? 'selected' : ''}>Heading</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Text Content</label>
+                    <textarea class="property-input" data-property="text" data-path="content">${atom.content.text}</textarea>
+                </div>
+            `;
+        }
+
+        let rulesHtml = atom.displayRules.map((rule, index) => {
+            const activityOptions = documentState.activities.map(act => `<option value="${act.id}" ${rule.activityId === act.id ? 'selected' : ''}>${act.name}</option>`).join('');
+            const supportOptions = ['light', 'moderate', 'intensive', 'light-multilingual', 'moderate-multilingual', 'intensive-multilingual']
+                .map(level => `<option value="${level}" ${(rule.supportLevel || []).includes(level) ? 'selected' : ''}>${level}</option>`).join('');
+
+            return `
+                <div class="rule-card" data-rule-index="${index}">
+                    <div class="rule-card-header">
+                        <span>Rule ${index + 1}</span>
+                        <button class="delete-rule-btn">Delete</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Activity</label>
+                        <select class="rule-input" data-property="activityId">
+                            <option value="">Any Activity</option>
+                            ${activityOptions}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Support Level(s)</label>
+                        <select class="rule-input" data-property="supportLevel" multiple>
+                            ${supportOptions}
+                        </select>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        propertiesContent.innerHTML = `
+            <h4>Atom Properties</h4>
+            <div class="form-group">
+                <label>Atom ID</label>
+                <input type="text" value="${atom.id}" readonly>
+            </div>
+            ${contentHtml}
+            <hr>
+            <h4>Display Rules</h4>
+            <div id="rules-container">${rulesHtml}</div>
+            <button id="add-rule-btn">Add Display Rule</button>
+            <hr>
+            <button id="delete-atom-btn" style="background-color: #e74c3c; color: white;">Delete Atom</button>
+        `;
+    }
+
+    function fullRender() {
+        renderActivities();
+        renderCanvas();
+        renderPropertiesPanel();
+    }
+
+    // --- EVENT HANDLERS ---
+    docTitleInput.addEventListener('change', (e) => {
+        documentState.title = e.target.value;
+    });
+
+    addActivityBtn.addEventListener('click', () => {
+        const name = newActivityNameInput.value.trim();
+        if (name) {
+            documentState.activities.push({
+                id: generateUUID(),
+                name: name,
+                status: 'defined'
+            });
+            newActivityNameInput.value = '';
+            fullRender();
+        }
+    });
+
+    addAtomBtn.addEventListener('click', () => {
+        const newAtom = {
+            id: generateUUID(),
+            type: 'text',
+            content: { subtype: 'paragraph', text: '' },
+            displayRules: []
+        };
+        documentState.atoms.push(newAtom);
+        selectedAtomId = newAtom.id;
+        fullRender();
+    });
+
+    canvas.addEventListener('click', (e) => {
+        const atomEl = e.target.closest('.atom');
+        if (atomEl) {
+            selectedAtomId = atomEl.dataset.atomId;
+            fullRender();
+        }
+    });
+
+    propertiesContent.addEventListener('input', (e) => { // Use 'input' for live updates from textarea
+        if (e.target.classList.contains('property-input')) {
+            const atom = documentState.atoms.find(a => a.id === selectedAtomId);
+            const property = e.target.dataset.property;
+            const path = e.target.dataset.path;
+            if (path) {
+                atom[path][property] = e.target.value;
+            } else {
+                atom[property] = e.target.value;
+            }
+            renderCanvas();
+        }
+    });
+
+    propertiesContent.addEventListener('change', (e) => { // 'change' is fine for selects
+        if (e.target.classList.contains('rule-input')) {
+            const ruleCard = e.target.closest('.rule-card');
+            const ruleIndex = ruleCard.dataset.ruleIndex;
+            const property = e.target.dataset.property;
+            const atom = documentState.atoms.find(a => a.id === selectedAtomId);
+            const rule = atom.displayRules[ruleIndex];
+
+            if (e.target.multiple) {
+                rule[property] = Array.from(e.target.selectedOptions).map(opt => opt.value);
+            } else {
+                rule[property] = e.target.value;
+            }
+        }
+    });
+    
+    propertiesContent.addEventListener('click', (e) => {
+        if(e.target.id === 'add-rule-btn') {
+            const atom = documentState.atoms.find(a => a.id === selectedAtomId);
+            atom.displayRules.push({ activityId: '', supportLevel: [] });
+            fullRender();
+        }
+        if (e.target.classList.contains('delete-rule-btn')) {
+            const ruleIndex = e.target.closest('.rule-card').dataset.ruleIndex;
+            const atom = documentState.atoms.find(a => a.id === selectedAtomId);
+            atom.displayRules.splice(ruleIndex, 1);
+            fullRender();
+        }
+        if(e.target.id === 'delete-atom-btn') {
+            if (confirm('Are you sure you want to delete this atom?')) {
+                documentState.atoms = documentState.atoms.filter(a => a.id !== selectedAtomId);
+                selectedAtomId = null;
+                fullRender();
+            }
+        }
+    });
+    
+    // --- MODAL LOGIC ---
+    function openModal() {
+        jsonOutputTextarea.value = JSON.stringify(documentState, null, 2);
+        modalOverlay.style.display = 'block';
+        modalContainer.style.display = 'block';
+    }
+
+    function closeModal() {
+        modalOverlay.style.display = 'none';
+        modalContainer.style.display = 'none';
+    }
+
+    generateJsonBtn.addEventListener('click', openModal);
+    modalCloseBtn.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', closeModal);
+
+    // --- INITIALIZATION ---
+    fullRender();
+});
+</script>
+
+</body>
+</html>
