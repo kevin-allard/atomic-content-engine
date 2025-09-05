@@ -15,6 +15,7 @@
             --label-color: #555;
             --accent-color: #e67e22;
             --danger-color: #c0392b;
+            --annotation-cue-color: #6a3ab2; /* Purple from image */
         }
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -52,16 +53,16 @@
         .panel-content { padding: 1rem; flex-grow: 1; }
         #canvas { padding: 2rem; }
         .atom {
-            padding: 1rem;
+            padding: 0;
             border: 2px solid transparent;
             border-radius: 4px;
             margin-bottom: 0.5rem;
             cursor: pointer;
             position: relative;
-            background-color: #fafafa;
         }
         .atom:hover { border-color: #c0cbe1; }
         .atom.selected { border-color: var(--primary-color); background-color: #f0f8ff; }
+        .atom-content { padding: 1rem; background-color: #fafafa; }
         .atom-placeholder {
             padding: 1.5rem;
             border-radius: 4px;
@@ -75,8 +76,22 @@
         .atom-placeholder.learnosity { background-color: #1abc9c; }
         .atom .conditional-badge {
             position: absolute; top: 5px; right: 5px; background-color: var(--accent-color); color: white;
-            font-size: 0.7rem; padding: 2px 5px; border-radius: 10px; font-weight: bold; cursor: help;
+            font-size: 0.7rem; padding: 2px 5px; border-radius: 10px; font-weight: bold; cursor: help; z-index: 10;
         }
+        .annotation-cue-container {
+            border: 1px solid var(--annotation-cue-color);
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            gap: 0.75rem;
+        }
+        .cue-play-icon { flex-shrink: 0; }
+        .cue-play-icon svg { width: 24px; height: 24px; color: var(--annotation-cue-color); }
+        .cue-content-wrapper { flex-grow: 1; }
+        .cue-header { display: flex; align-items: center; gap: 0.5rem; color: var(--annotation-cue-color); font-weight: bold; margin-bottom: 0.5rem; }
+        .cue-header svg { width: 18px; height: 18px; }
+        .cue-body { color: #444; }
+
         .activity-item { padding: 0.5rem; border-bottom: 1px solid var(--border-color); }
         .add-atom-bar { text-align: center; margin: 1rem 0; }
         button, select {
@@ -221,6 +236,8 @@ document.addEventListener('DOMContentLoaded', () => {
         edit: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg>`,
         save: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z" /></svg>`,
         delete: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg>`,
+        play: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z" /></svg>`,
+        pencil: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg>`
     };
 
     // --- UTILITY FUNCTIONS ---
@@ -271,21 +288,31 @@ document.addEventListener('DOMContentLoaded', () => {
             if (atom.id === selectedAtomId) atomEl.classList.add('selected');
 
             let content = '';
-            switch (atom.type) {
-                case 'text':
+            if (atom.type === 'text') {
+                if (atom.content.subtype === 'annotation-cue') {
+                    const textContent = atom.content.text || '<em style="color:#999;">Type question or prompt here...</em>';
+                    content = `
+                        <div class="annotation-cue-container">
+                            <div class="cue-play-icon">${ICONS.play}</div>
+                            <div class="cue-content-wrapper">
+                                <div class="cue-header">${ICONS.pencil} <span>Stop and Annotate</span></div>
+                                <div class="cue-body">${textContent}</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
                     const tag = atom.content.subtype === 'heading' ? 'h2' : 'p';
                     const textContent = atom.content.text.replace(/</g, "&lt;").replace(/>/g, "&gt;") || '<em style="color:#999;">Empty text atom...</em>';
-                    content = `<${tag}>${textContent}</${tag}>`;
-                    break;
-                case 'interactive':
-                    content = `<div class="atom-placeholder interactive">Interactive: ${atom.content.id || 'Not set'}</div>`;
-                    break;
-                case 'media':
-                    content = `<div class="atom-placeholder media">Media: ${atom.content.src || 'Not set'}</div>`;
-                    break;
-                case 'learnosity':
-                    content = `<div class="atom-placeholder learnosity">Learnosity Item: ${atom.content.ref || 'Not set'}</div>`;
-                    break;
+                    content = `<div class="atom-content"><${tag}>${textContent}</${tag}></div>`;
+                }
+            } else {
+                let placeholderText = '';
+                switch(atom.type) {
+                    case 'interactive': placeholderText = `Interactive: ${atom.content.id || 'Not set'}`; break;
+                    case 'media': placeholderText = `Media: ${atom.content.src || 'Not set'}`; break;
+                    case 'learnosity': placeholderText = `Learnosity Item: ${atom.content.ref || 'Not set'}`; break;
+                }
+                content = `<div class="atom-placeholder ${atom.type}">${placeholderText}</div>`;
             }
             atomEl.innerHTML = content;
             
@@ -317,6 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <select class="property-input" data-property="subtype" data-path="content">
                         <option value="paragraph" ${atom.content.subtype === 'paragraph' ? 'selected' : ''}>Paragraph</option>
                         <option value="heading" ${atom.content.subtype === 'heading' ? 'selected' : ''}>Heading</option>
+                        <option value="annotation-cue" ${atom.content.subtype === 'annotation-cue' ? 'selected' : ''}>Annotation Cue</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -336,6 +364,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const supportCheckboxes = documentState.availableSupportLevels.map(level => `
                     <label><input type="checkbox" class="rule-input-checkbox" data-level="${level}" ${(rule.supportLevel || []).includes(level) ? 'checked' : ''}> ${level.replace(/-/g, ' ')}</label>
                 `).join('');
+                
+                const allChecked = documentState.availableSupportLevels.length > 0 && documentState.availableSupportLevels.every(level => (rule.supportLevel || []).includes(level));
 
                 return `
                     <div class="rule-card" data-rule-index="${index}">
@@ -353,8 +383,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             </select>
                         </div>
                         <div class="form-group checkbox-group">
-                            <label>Support Level(s)</label>
-                            ${supportCheckboxes}
+                            <label><input type="checkbox" class="check-all-support" ${allChecked ? 'checked' : ''}> <strong>Support Level(s)</strong></label>
+                            <div class="support-level-options">${supportCheckboxes}</div>
                         </div>
                     </div>
                 `;
@@ -456,7 +486,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     propertiesContent.addEventListener('click', e => {
         const button = e.target.closest('.icon-btn, button');
-        if (!button) return;
+        if (!button) { // Handle checkbox clicks for "Check All"
+            if (e.target.classList.contains('check-all-support')) {
+                const ruleCard = e.target.closest('.rule-card');
+                const checkboxes = ruleCard.querySelectorAll('.rule-input-checkbox');
+                checkboxes.forEach(cb => cb.checked = e.target.checked);
+            } else if (e.target.classList.contains('rule-input-checkbox')) {
+                const ruleCard = e.target.closest('.rule-card');
+                const allCheckboxes = ruleCard.querySelectorAll('.rule-input-checkbox');
+                const checkedCheckboxes = ruleCard.querySelectorAll('.rule-input-checkbox:checked');
+                ruleCard.querySelector('.check-all-support').checked = allCheckboxes.length === checkedCheckboxes.length;
+            }
+            return;
+        }
         
         const atom = documentState.atoms.find(a => a.id === selectedAtomId);
         if (!atom) return;
@@ -483,7 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 rule.activityId = ruleCard.querySelector('.rule-input[data-property="activityId"]').value;
                 const checkedLevels = Array.from(ruleCard.querySelectorAll('.rule-input-checkbox:checked')).map(cb => cb.dataset.level);
                 rule.supportLevel = checkedLevels;
-                rule.isEditing = false;
+                delete rule.isEditing;
                 fullRender();
             } else if (button.classList.contains('delete-rule-btn')) {
                 atom.displayRules.splice(ruleIndex, 1);
