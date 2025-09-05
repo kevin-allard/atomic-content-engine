@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mosaic: Atomic Content Editor</title>
+    <title>Atomic Builder</title>
     <style>
         :root {
+            --header-height: 60px;
             --bg-color: #f4f7fa;
             --panel-bg: #ffffff;
             --border-color: #dbe1e8;
@@ -15,7 +16,7 @@
             --label-color: #555;
             --accent-color: #e67e22;
             --danger-color: #c0392b;
-            --annotation-cue-color: #6a3ab2; /* Purple from image */
+            --annotation-cue-color: #6a3ab2;
         }
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -24,17 +25,55 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             display: flex;
+            flex-direction: column;
             height: 100vh;
             overflow: hidden;
+        }
+        .main-header {
+            height: var(--header-height);
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1rem;
+            flex-shrink: 0;
+        }
+        .header-left, .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .header-logo {
+            height: 30px;
+        }
+        .product-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+        .user-avatar {
+            height: 36px;
+            width: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .user-name {
+            font-weight: 500;
+        }
+        .header-version {
+            font-size: 0.8rem;
+            color: #999;
+            font-family: monospace;
+            margin-right: -0.5rem;
         }
         .editor-container {
             display: grid;
             grid-template-columns: 300px 1fr 340px;
             width: 100%;
-            height: 100%;
+            height: calc(100vh - var(--header-height));
             gap: 1rem;
             padding: 1rem;
-            position: relative;
         }
         .panel {
             background-color: var(--panel-bg);
@@ -113,7 +152,7 @@
         .icon-btn { background: none; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: #555;}
         .icon-btn:hover { background-color: rgba(0,0,0,0.1); color: #000; }
         .icon-btn.delete:hover { color: var(--danger-color); }
-        .icon-btn svg { width: 16px; height: 16px; }
+        .icon-btn svg { width: 18px; height: 18px; }
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6);
             z-index: 999; display: none;
@@ -130,17 +169,23 @@
         .modal-footer { padding: 1rem; border-top: 1px solid var(--border-color); text-align: right; }
         #activity-link-list { list-style-type: none; padding: 0; margin: 0; }
         #activity-link-list li { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
-        .version-display {
-            position: absolute;
-            bottom: 5px;
-            left: 20px;
-            font-size: 0.75rem;
-            color: #999;
-            font-family: monospace;
-        }
     </style>
 </head>
 <body>
+    <header class="main-header">
+        <div class="header-left">
+            <img src="images/clay-logo.png" alt="Clay Logo" class="header-logo">
+            <h1 class="product-name">Atomic Builder</h1>
+        </div>
+        <div class="header-right">
+            <span id="version-display" class="header-version"></span>
+            <span class="user-name">K. Allard</span>
+            <button class="icon-btn" title="Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.44,0.17-0.48,0.41L9.22,5.25C8.63,5.5,8.1,5.82,7.6,6.2L5.21,5.24C5,5.16,4.75,5.23,4.63,5.45L2.71,8.77C2.6,8.97,2.65,9.24,2.83,9.38l2.03,1.58C4.82,11.36,4.8,11.68,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.38,2.44c0.04,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.48-0.41l0.38-2.44c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0.01,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+            </button>
+            <img src="images/avatar.png" alt="User Avatar" class="user-avatar">
+        </div>
+    </header>
     <div class="editor-container">
         <!-- Left Panel -->
         <div id="document-panel" class="panel">
@@ -184,8 +229,6 @@
                 <p>Select an atom to see its properties.</p>
             </div>
         </div>
-
-        <div class="version-display">v rc1.beta.0.02</div>
     </div>
     
     <!-- Modals -->
@@ -218,6 +261,8 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    
+    const APP_VERSION = "rc1.beta.0.03";
 
     // --- MOCK DATABASE ---
     const mockActivityDatabase = [
@@ -592,6 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
 
     // --- INITIALIZATION ---
+    document.getElementById('version-display').textContent = APP_VERSION;
     fullRender();
 });
 </script>
