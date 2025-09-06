@@ -170,17 +170,24 @@
         .modal-container {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel-bg);
             z-index: 1000; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            width: 90%; max-width: 700px; display: none; flex-direction: column; max-height: 80vh; height: 70vh;
+            width: 90%; max-width: 500px; display: none; flex-direction: column; max-height: 80vh;
         }
         .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border-color); }
         .modal-header h3 { margin: 0; color: var(--primary-color); }
         .modal-close-btn { font-size: 1.5rem; font-weight: bold; color: #aaa; cursor: pointer; background: none; border: none; }
         .modal-content { padding: 1rem; overflow-y: auto; flex-grow: 1; }
-        #json-output { width: 100%; height: 100%; font-family: monospace; font-size: 0.9rem; border: 1px solid var(--border-color); border-radius: 4px; resize: none; }
         .modal-footer { padding: 1rem; border-top: 1px solid var(--border-color); text-align: right; }
         #activity-link-list { list-style-type: none; padding: 0; margin: 0; }
         #activity-link-list li { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
         .property-preview-image { max-width: 100%; border-radius: 4px; border: 1px solid var(--border-color); margin-top: 0.5rem; }
+
+        .collapsible-section { border-bottom: 1px solid var(--border-color); margin-bottom: 1rem; padding-bottom: 1rem; }
+        .collapsible-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+        .collapsible-header h4 { margin: 0; font-size: 1rem; }
+        .collapsible-toggle-icon { transition: transform 0.2s ease-in-out; }
+        .collapsible-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out, margin-top 0.3s ease-out; margin-top: 0; }
+        .collapsible-section.open .collapsible-content { max-height: 1000px; /* Large enough value */ margin-top: 1rem; }
+        .collapsible-section.open .collapsible-toggle-icon { transform: rotate(180deg); }
     </style>
 </head>
 <body>
@@ -201,19 +208,43 @@
     <div class="editor-container">
         <!-- Left Panel -->
         <div id="document-panel" class="panel">
-            <div class="panel-header">Document Settings</div>
+            <div class="panel-header">Document Properties</div>
             <div class="panel-content">
                 <div class="form-group">
                     <label for="doc-title">Title</label>
                     <input type="text" id="doc-title" value="New Document">
                 </div>
-                <hr>
-                <h4>Linked Activities</h4>
-                <div id="activity-list"></div>
-                <button id="link-activity-btn">Link Activity</button>
-                <hr>
-                <h4>Levels of Support</h4>
-                <div id="support-levels-list" class="checkbox-group"></div>
+                
+                <div class="collapsible-section open">
+                    <div class="collapsible-header">
+                        <h4>Linked Activities</h4>
+                        <span class="collapsible-toggle-icon">▲</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div id="activity-list"></div>
+                        <button id="link-activity-btn">Link Activity</button>
+                    </div>
+                </div>
+
+                <div class="collapsible-section open">
+                    <div class="collapsible-header">
+                        <h4>Levels of Support</h4>
+                        <span class="collapsible-toggle-icon">▲</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div id="support-levels-list" class="checkbox-group"></div>
+                    </div>
+                </div>
+
+                <div class="collapsible-section open">
+                    <div class="collapsible-header">
+                        <h4>Metadata</h4>
+                        <span class="collapsible-toggle-icon">▲</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <button id="add-doc-metadata-btn">Add Metadata</button>
+                    </div>
+                </div>
             </div>
             <div class="panel-footer">
                 <button id="open-json-btn">Open JSON</button>
@@ -237,7 +268,7 @@
 
         <!-- Right Panel -->
         <div id="properties-panel" class="panel">
-            <div class="panel-header">Properties</div>
+            <div class="panel-header">Atom Properties</div>
             <div id="properties-content" class="panel-content">
                 <p>Select an atom to see its properties.</p>
             </div>
@@ -270,7 +301,14 @@
             <button class="modal-close-btn" data-modal="activity">&times;</button>
         </div>
         <div class="modal-content">
-            <input type="text" id="activity-search" placeholder="Search activities..." style="margin-bottom: 1rem; width: 100%;">
+            <div style="padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                    <label for="new-activity-name-modal">Create New Activity</label>
+                    <input type="text" id="new-activity-name-modal" placeholder="Enter new activity name...">
+                </div>
+                <button id="create-link-activity-btn">Create & Link</button>
+            </div>
+            <input type="text" id="activity-search" placeholder="Search existing activities..." style="margin-bottom: 1rem; width: 100%;">
             <ul id="activity-link-list"></ul>
         </div>
         <div class="modal-footer">
@@ -282,10 +320,10 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.05";
+    const APP_VERSION = "rc1.beta.0.06";
 
     // --- MOCK DATABASE ---
-    const mockActivityDatabase = [
+    let mockActivityDatabase = [
         { id: generateUUID(), name: "Week 1: Introduction Quiz" },
         { id: generateUUID(), name: "Week 1: Initial Reading" },
         { id: generateUUID(), name: "Module 1: Self-Reflection" },
@@ -303,6 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
         title: "New Document",
         linkedActivityIds: [],
         availableSupportLevels: [...ALL_SUPPORT_LEVELS],
+        metadata: [],
         atoms: []
     };
     let selectedAtomId = null;
@@ -313,7 +352,8 @@ document.addEventListener('DOMContentLoaded', () => {
         save: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z" /></svg>`,
         delete: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg>`,
         play: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z" /></svg>`,
-        pencil: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg>`
+        pencil: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg>`,
+        toggle: `▲`
     };
 
     // --- UTILITY FUNCTIONS ---
@@ -497,18 +537,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
 
         propertiesContent.innerHTML = `
-            <h4>Atom Properties</h4>
-            <div class="form-group">
-                <label>Atom ID</label>
-                <input type="text" value="${atom.id}" readonly>
+            <div class="collapsible-section open">
+                <div class="collapsible-header"><h4>Core Properties</h4><span class="collapsible-toggle-icon">${ICONS.toggle}</span></div>
+                <div class="collapsible-content">
+                    <div class="form-group">
+                        <label>Atom ID</label>
+                        <input type="text" value="${atom.id}" readonly>
+                    </div>
+                    ${contentHtml}
+                </div>
             </div>
-            ${contentHtml}
-            <hr>
-            <h4>Display Rules</h4>
-            <div id="rules-container">${rulesHtml}</div>
-            <button id="add-rule-btn">Add Display Rule</button>
-            <hr>
-            <button id="delete-atom-btn" style="background-color: var(--danger-color); color: white;">Delete Atom</button>
+            <div class="collapsible-section open">
+                <div class="collapsible-header"><h4>Display Criteria</h4><span class="collapsible-toggle-icon">${ICONS.toggle}</span></div>
+                <div class="collapsible-content">
+                    <div id="rules-container">${rulesHtml}</div>
+                    <button id="add-rule-btn">Add Display Criterion</button>
+                </div>
+            </div>
+             <div class="collapsible-section open">
+                <div class="collapsible-header"><h4>Metadata</h4><span class="collapsible-toggle-icon">${ICONS.toggle}</span></div>
+                <div class="collapsible-content">
+                    <button id="add-atom-metadata-btn">Add Metadata</button>
+                </div>
+            </div>
+            <button id="delete-atom-btn" style="background-color: var(--danger-color); color: white; width: 100%; margin-top: 1rem;">Delete Atom</button>
         `;
     }
 
@@ -526,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('add-atom-btn').addEventListener('click', () => {
         const type = document.getElementById('add-atom-type').value;
         const newAtom = {
-            id: generateUUID(), type: type, displayRules: []
+            id: generateUUID(), type: type, displayRules: [], metadata: []
         };
         switch(type) {
             case 'text': newAtom.content = { subtype: 'paragraph', text: '' }; break;
@@ -583,7 +635,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const atom = documentState.atoms.find(a => a.id === selectedAtomId);
             if (atom && atom.type === 'media') {
                 atom.content.src = URL.createObjectURL(file);
-                atom.content.fileName = file.name; // Store filename for reference
+                atom.content.fileName = file.name;
                 fullRender();
             }
         }
@@ -684,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Basic validation
                 if (loadedState && loadedState.id && loadedState.title && Array.isArray(loadedState.atoms)) {
                     documentState = loadedState;
-                    selectedAtomId = null; // Deselect atom from old document
+                    selectedAtomId = null; 
                     fullRender();
                 } else {
                     alert('Error: The selected file is not a valid Atomic Builder document.');
@@ -695,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         reader.readAsText(file);
-        e.target.value = null; // Reset for re-selection of the same file
+        e.target.value = null; 
     });
 
     // Activity Link Modal Logic
@@ -706,6 +758,20 @@ document.addEventListener('DOMContentLoaded', () => {
     linkActivityBtn.addEventListener('click', () => {
         renderActivityLinkList();
         openModal('activity');
+    });
+
+    document.getElementById('create-link-activity-btn').addEventListener('click', () => {
+        const nameInput = document.getElementById('new-activity-name-modal');
+        const name = nameInput.value.trim();
+        if (name) {
+            const newActivity = { id: generateUUID(), name: name };
+            mockActivityDatabase.unshift(newActivity); // Add to top of the master list
+            if (!documentState.linkedActivityIds.includes(newActivity.id)) {
+                documentState.linkedActivityIds.push(newActivity.id);
+            }
+            nameInput.value = '';
+            renderActivityLinkList(activitySearch.value); // Re-render the list in the modal
+        }
     });
 
     function renderActivityLinkList(filter = '') {
@@ -731,6 +797,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     document.getElementById('cancel-link-activity-btn').addEventListener('click', () => closeModal('activity'));
     
+    // Collapsible sections logic
+    document.body.addEventListener('click', (e) => {
+        if (e.target.closest('.collapsible-header')) {
+            const header = e.target.closest('.collapsible-header');
+            const section = header.parentElement;
+            section.classList.toggle('open');
+        }
+    });
 
     // --- INITIALIZATION ---
     document.getElementById('version-display').textContent = APP_VERSION;
