@@ -378,7 +378,7 @@
 // --- FULL SCRIPT START ---
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.09";
+    const APP_VERSION = "rc1.beta.0.10";
 
     // --- MANIFEST & DATABASE SIMULATION ---
     let manifest = {};
@@ -450,9 +450,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const linkActivityBtn = document.getElementById('link-activity-btn'); const activityModalList = document.getElementById('activity-link-list'); const activitySearch = document.getElementById('activity-search'); const gradeFilter = document.getElementById('activity-grade-filter'); const unitFilter = document.getElementById('activity-unit-filter'); const createLinkBtn = document.getElementById('create-link-activity-btn');
     linkActivityBtn.addEventListener('click', () => { populateGradeFilter(); updateUnitFilter(); updateActivityLinkList(); openModal('activity'); });
     createLinkBtn.addEventListener('click', () => { const nameInput = document.getElementById('new-activity-name-modal'); const name = nameInput.value.trim(); const grade = gradeFilter.value; const unit = unitFilter.value; if (name && grade && unit) { const newActivityId = generateUUID(); activityLookup[newActivityId] = { id: newActivityId, name: name, grade, unit }; if (!documentState.linkedActivityIds.includes(newActivityId)) { documentState.linkedActivityIds.push(newActivityId); } nameInput.value = ''; updateActivityLinkList(); } });
-    function populateGradeFilter() { gradeFilter.innerHTML = '<option value="">Select Grade</option>'; const grades = Object.keys(manifest.grades).sort((a,b) => parseInt(a)-parseInt(b)); [...new Set(['6','7','8','9','10','11','12', ...grades])].forEach(g => gradeFilter.innerHTML += `<option value="${g}">Grade ${g}</option>`); }
-    function updateUnitFilter() { const grade = gradeFilter.value; unitFilter.innerHTML = '<option value="">Select Unit</option>'; if (grade && manifest.grades[grade]) { Object.keys(manifest.grades[grade].units).forEach(u => unitFilter.innerHTML += `<option value="${u}">${u}</option>`); unitFilter.disabled = false; } else { unitFilter.disabled = true; } createLinkBtn.disabled = !(grade && unitFilter.value); }
-    function updateActivityLinkList() { const grade = gradeFilter.value; const unit = unitFilter.value; const filter = activitySearch.value.toLowerCase(); activityModalList.innerHTML = ''; createLinkBtn.disabled = !(grade && unit); if (!grade || !unit) return; const activities = Object.values(activityLookup).filter(act => act.grade == grade && act.unit == unit && act.name.toLowerCase().includes(filter)); activities.forEach(act => { const isChecked = documentState.linkedActivityIds.includes(act.id); const li = document.createElement('li'); li.innerHTML = `<label class="checkbox-group"><input type="checkbox" value="${act.id}" ${isChecked ? 'checked' : ''}>${act.name}</label>`; activityModalList.appendChild(li); }); }
+    function populateGradeFilter() { gradeFilter.innerHTML = '<option value="">Select Grade</option>'; const grades = Object.keys(manifest.grades || {}).sort((a,b) => parseInt(a)-parseInt(b)); [...new Set(['6','7','8','9','10','11','12', ...grades])].forEach(g => gradeFilter.innerHTML += `<option value="${g}">Grade ${g}</option>`); }
+    function updateUnitFilter() { const grade = gradeFilter.value; unitFilter.innerHTML = '<option value="">Select Unit</option>'; if (grade && manifest.grades && manifest.grades[grade]) { Object.keys(manifest.grades[grade].units).forEach(u => unitFilter.innerHTML += `<option value="${u}">${u}</option>`); unitFilter.disabled = false; } else { unitFilter.disabled = true; } createLinkBtn.disabled = !(grade && unitFilter.value); }
+    function updateActivityLinkList() { const grade = gradeFilter.value; const unit = unitFilter.value; const filter = activitySearch.value.toLowerCase(); activityModalList.innerHTML = ''; createLinkBtn.disabled = !(grade && unit); if (!grade || !unit) { activityModalList.innerHTML = '<li>Please select a grade and unit to see activities.</li>'; return; } const activities = Object.values(activityLookup).filter(act => act.grade == grade && act.unit == unit && act.name.toLowerCase().includes(filter)); if (activities.length === 0) { activityModalList.innerHTML = '<li>No activities found for this selection.</li>'; return; } activities.forEach(act => { const isChecked = documentState.linkedActivityIds.includes(act.id); const li = document.createElement('li'); li.innerHTML = `<label class="checkbox-group"><input type="checkbox" value="${act.id}" ${isChecked ? 'checked' : ''}>${act.name}</label>`; activityModalList.appendChild(li); }); }
     gradeFilter.addEventListener('change', () => { updateUnitFilter(); updateActivityLinkList(); });
     unitFilter.addEventListener('change', updateActivityLinkList);
     activitySearch.addEventListener('input', updateActivityLinkList);
@@ -475,15 +475,31 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('version-display').textContent = APP_VERSION;
         try {
             const response = await fetch('manifest.json');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             manifest = await response.json();
         } catch (error) {
-            console.error("Could not load manifest.json. Using fallback.", error);
-            // Fallback manifest is now empty, forcing users to create activities.
+            console.error("Could not load manifest.json. Using an empty manifest as a fallback.", error);
             manifest = { grades: {} };
         }
         processManifest();
         fullRender();
     }
+    
+    function processManifest() {
+        activityLookup = {};
+        if (!manifest.grades) return;
+        for (const grade in manifest.grades) {
+            if (!manifest.grades[grade].units) continue;
+            for (const unit in manifest.grades[grade].units) {
+                if (!Array.isArray(manifest.grades[grade].units[unit].activities)) continue;
+                manifest.grades[grade].units[unit].activities.forEach(activityName => {
+                    const id = generateUUID();
+                    activityLookup[id] = { id, name: activityName, grade, unit };
+                });
+            }
+        }
+    }
+
     initializeApp();
 });
 </script>

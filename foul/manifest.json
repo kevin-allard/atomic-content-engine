@@ -1,0 +1,29 @@
+{
+  "grades": {
+    "6": {
+      "units": {
+        "The Function of Family": {
+          "activities": [
+            "1.1 Preview the Unit", "1.2 Analyze a Quote", "1.3 Read to React", "1.4 React and Respond", "1.5 Analyze the Driving Task Prompt", "1.6 Read the World",
+            "2.1 Preview the Section", "2.2 Define Vocabulary", "2.3 Identify and Categorize Vocabulary", "2.4 Read to Comprehend", "2.5 Make Character Connections", "2.6 Make Character Inferences", "2.7 Predict a Literary Future", "2.8 Read the World",
+            "3.1 Preview the Section", "3.2 Determine What Family Means to You", "3.3 Annotate for Context Clues", "3.4 Analyze Vocabulary", "3.5 Summarize a Text", "3.6 Compare and Contrast Family Dynamics", "3.7 Freewrite", "3.8 Make Predictions", "3.9 Draw Conclusions", "3.10 Read to Contextualize", "3.11 Connect Quotes", "3.12 Read the World",
+            "4.1 Preview the Section", "4.2 Identify and Categorize Vocabulary", "4.3 Annotate for Understanding", "4.4 Chunk and Summarize", "4.5 Concept Overview: Plot Elements", "4.6 Identify Plot Structure", "4.7 Analyze Relationship of Dialogue, Plot, and Character", "4.8 Annotate for Plot", "4.9 Define Vocabulary", "4.10 Identify Plot Structure", "4.11 Concept Overview: Theme vs. Topic", "4.12 Determine Theme", "4.13 Analyze Development of Theme", "4.14 Analyze Theme", "4.15 Read the World",
+            "5.1 Preview the Section", "5.2 Read to Analyze", "5.3 Identify Plot Structure", "5.4 Determine Theme", "5.5 Analyze Development of Theme", "5.6 Prepare to Seminar", "5.7 Seminar", "5.8 Reflect on Seminar",
+            "6.1 Analyze a Literary Analysis", "6.2 Analyze the Rubric", "6.3 Preview the Literary Analysis Planner", "6.4 Draft a Thesis Statement", "6.5 Plan an Introduction", "6.6 Draft an Introduction", "6.7 Determine Supporting Ideas", "6.8 Analyze Body Paragraphs", "6.9 Plan Body Paragraphs", "6.10 Concept Overview: Integrating Evidence", "6.11 Draft Body Paragraphs", "6.12 Plan a Conclusion", "6.13 Draft a Conclusion", "6.14 Revise for Style", "6.15 Concept Overview: Subject Verb Agreement", "6.16 Revise for Grammar", "6.17 Exchange Peer Feedback", "6.18 Proofread and Polish", "6.19 Reflect and Submit", "6.20 Final Skill Reflection", "6.21 Read the World Final Reflection"
+          ]
+        }
+      }
+    },
+    "7": {
+      "units": {
+        "Exploring Courage": { "activities": ["Sample Activity 7.1", "Sample Activity 7.2"] }
+      }
+    },
+    "8": {
+      "units": {
+        "The Power of Words": { "activities": ["Sample Activity 8.1"] },
+        "Historical Perspectives": { "activities": ["Sample Activity 8.2"] }
+      }
+    }
+  }
+}
