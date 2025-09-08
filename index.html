@@ -125,6 +125,7 @@
         .atom:hover { border-color: #c5cae9; } /* Indigo 100 */
         .atom.selected { border-color: var(--primary-color); }
         .atom-content { padding: 16px; background-color: var(--panel-bg); }
+        .atom img { max-width: 100%; display: block; border-radius: 4px; }
         .atom-placeholder {
             padding: 24px; border-radius: 4px; font-weight: 500;
             color: white; text-align: center; font-size: 14px;
@@ -230,16 +231,6 @@
         .template-card .template-fields-list { list-style-type: none; padding-left: 16px; margin: 0; }
         #define-term-btn { position: absolute; display: none; z-index: 10; background: var(--primary-color); color: white; padding: 4px 10px; font-size: 12px; }
         .definition-card { background: #fff; padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 12px; }
-        .drop-indicator {
-            position: absolute;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background-color: var(--primary-color);
-            z-index: 20;
-            display: none;
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
@@ -465,7 +456,7 @@
 <script id="main-script">
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.16";
+    const APP_VERSION = "rc1.beta.0.17";
 
     // --- MANIFEST & DATABASE SIMULATION ---
     let manifest = {};
@@ -487,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { key: "Artifact of Learning", type: "text"}
         ]
     };
-    const MOCK_GENRES = ["Fiction", "Non-Fiction", "Science Fiction", "Fantasy", "Mystery", "Biography", "History", "Poetry", "Technical", "Satire"];
+    const MOCK_GENRES = ["Fiction", "Non-Fiction", "Short Story", "Science Fiction", "Fantasy", "Mystery", "Biography", "History", "Poetry", "Technical", "Satire"];
     const METADATA_TEMPLATES = {
         document: [
             { 
