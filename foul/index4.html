@@ -125,6 +125,7 @@
         .atom:hover { border-color: #c5cae9; } /* Indigo 100 */
         .atom.selected { border-color: var(--primary-color); }
         .atom-content { padding: 16px; background-color: var(--panel-bg); }
+        .atom img { max-width: 100%; display: block; border-radius: 4px; }
         .atom-placeholder {
             padding: 24px; border-radius: 4px; font-weight: 500;
             color: white; text-align: center; font-size: 14px;
@@ -230,16 +231,6 @@
         .template-card .template-fields-list { list-style-type: none; padding-left: 16px; margin: 0; }
         #define-term-btn { position: absolute; display: none; z-index: 10; background: var(--primary-color); color: white; padding: 4px 10px; font-size: 12px; }
         .definition-card { background: #fff; padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 12px; }
-        .drop-indicator {
-            position: absolute;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background-color: var(--primary-color);
-            z-index: 20;
-            display: none;
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
@@ -369,7 +360,7 @@
             <h3>Link Activities</h3>
             <button class="modal-close-btn" data-modal="activity">&times;</button>
         </div>
-        <div class="modal-content" style="padding: 24px;">
+        <div class="modal-content">
             <div style="padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color);">
                 <div class="form-group" style="margin-bottom: 8px;">
                     <label for="new-activity-name-modal">Create New Activity</label>
@@ -434,7 +425,7 @@
             <h3>Select Genres</h3>
             <button class="modal-close-btn" data-modal="genre">&times;</button>
         </div>
-        <div class="modal-content checkbox-group" id="genre-selection-list" style="padding: 24px;"></div>
+        <div class="modal-content checkbox-group" id="genre-selection-list"></div>
         <div class="modal-footer">
             <button id="cancel-genre-btn">Cancel</button>
             <button id="save-genre-btn" class="primary">Save Genres</button>
@@ -562,6 +553,13 @@ document.addEventListener('DOMContentLoaded', () => {
     metadataModal.addEventListener('input', e => { if (e.target.classList.contains('metadata-value-input')) { const { target } = currentMetadataContext; const metaItem = target.metadata.find(m => m.key === e.target.dataset.key); if (metaItem) metaItem.value = e.target.value; if (metaItem.key === 'Title') { fullRender(); } } });
     document.getElementById('metadata-search').addEventListener('input', e => renderMetadataModal(e.target.value));
     document.getElementById('save-metadata-btn').addEventListener('click', () => { closeModal('metadata'); fullRender(); });
+    const defineTermBtn = document.getElementById('define-term-btn'); propertiesContent.addEventListener('mouseup', e => { if (e.target.classList.contains('text-editor')) { const textarea = e.target; setTimeout(() => { if (textarea.selectionStart !== textarea.selectionEnd) { const rect = textarea.getBoundingClientRect(); const selection = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd); currentGlossaryContext.selection = { start: textarea.selectionStart, end: textarea.selectionEnd, text: selection }; defineTermBtn.style.display = 'block'; defineTermBtn.style.top = `${textarea.offsetTop - defineTermBtn.offsetHeight - 5}px`; defineTermBtn.style.left = `${textarea.offsetLeft}px`; } else { hideDefineTermButton(); } }, 10); }}); document.addEventListener('click', (e) => { if (!e.target.closest('.form-group')) { hideDefineTermButton(); } });
+    function hideDefineTermButton() { defineTermBtn.style.display = 'none'; }
+    defineTermBtn.addEventListener('click', () => { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; const { selection } = currentGlossaryContext; currentGlossaryContext.atomId = atom.id; const existingEntry = (atom.glossaryEntries || []).find(ge => ge.startOffset === selection.start && ge.endOffset === selection.end); currentGlossaryContext.entry = existingEntry || { id: generateUUID(), termText: selection.text, startOffset: selection.start, endOffset: selection.end, definitions: [] }; renderGlossaryModal(); openModal('glossary'); hideDefineTermButton(); });
+    function renderGlossaryModal() { const { entry } = currentGlossaryContext; document.getElementById('glossary-term-text').value = entry.termText; const listEl = document.getElementById('definitions-list'); listEl.innerHTML = ''; entry.definitions.forEach((def, index) => { const supportOptions = ALL_SUPPORT_LEVELS.map(level => `<option value="${level}" ${def.supportLevel === level ? 'selected' : ''}>${level.replace(/-/g, ' ')}</option>`).join(''); listEl.innerHTML += `<div class="definition-card" data-def-index="${index}"><div class="form-group"><label>Part of Speech</label><input type="text" class="glossary-input" data-property="partOfSpeech" value="${def.partOfSpeech || ''}"></div><div class="form-group"><label>Definition</label><textarea class="glossary-input" data-property="definitionText">${def.definitionText || ''}</textarea></div><div class="form-group"><label>Support Level</label><select class="glossary-input" data-property="supportLevel">${supportOptions}</select></div></div>`; }); }
+    document.getElementById('add-definition-btn').addEventListener('click', () => { currentGlossaryContext.entry.definitions.push({ supportLevel: 'core', partOfSpeech: '', definitionText: '' }); renderGlossaryModal(); });
+    document.getElementById('save-glossary-btn').addEventListener('click', () => { const atom = documentState.atoms.find(a => a.id === currentGlossaryContext.atomId); if (!atom) return; const { entry } = currentGlossaryContext; const defCards = document.querySelectorAll('#definitions-list .definition-card'); entry.definitions = Array.from(defCards).map(card => ({ partOfSpeech: card.querySelector('[data-property="partOfSpeech"]').value, definitionText: card.querySelector('[data-property="definitionText"]').value, supportLevel: card.querySelector('[data-property="supportLevel"]').value })); const existingIndex = (atom.glossaryEntries || []).findIndex(ge => ge.id === entry.id); if (existingIndex > -1) { atom.glossaryEntries[existingIndex] = entry; } else { if (!atom.glossaryEntries) atom.glossaryEntries = []; atom.glossaryEntries.push(entry); } closeModal('glossary'); fullRender(); });
+    document.getElementById('cancel-glossary-btn').addEventListener('click', () => closeModal('glossary'));
     
     // --- INITIALIZATION ---
     async function initializeApp() {
