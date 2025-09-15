@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atomic Builder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tinymce6-formula/dist/style.min.css">
+
+
+    <style>
+        /* --- GLOBAL & LENSES STYLES --- */
+        :root {
+            --header-height: 60px;
+            --bg-color: #f5f5f5; /* Material Grey 50 */
+            --panel-bg: #ffffff;
+            --border-color: rgba(0, 0, 0, 0.12);
+            --primary-color: #3f51b5; /* Material Indigo 500 */
+            --primary-hover: #303f9f; /* Material Indigo 700 */
+            --text-primary: #212121;
+            --text-secondary: #757575;
+            --accent-color: #ff9800; /* Material Orange 500 */
+            --danger-color: #d32f2f; /* Material Red 700 */
+            --annotation-cue-color: #6a3ab2;
+            --active-context-bg: #e8eaf6; /* Material Indigo 50 */
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        body { font-family: 'Roboto', sans-serif; background-color: var(--bg-color); color: var(--text-primary); display: flex; flex-direction: column; }
+        
+        /* Main App Shell Header */
+        #main-app-header {
+            height: var(--header-height);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex-shrink: 0;
+            background-color: var(--panel-bg);
+            z-index: 200;
+        }
+        .header-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .header-brand img { height: 32px; }
+        .header-brand .product-name { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); }
+        .version-tag { font-family: monospace; font-size: 12px; color: var(--text-secondary); }
+        
+        #app-header-controls { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+        .user-profile { display: flex; align-items: center; gap: 12px; }
+        .user-profile .user-name { font-weight: 500; }
+        .user-profile .avatar { height: 40px; width: 40px; border-radius: 50%; object-fit: cover; }
+        .selector-group { position: relative; }
+        .selector-group label { position: absolute; top: -10px; left: 10px; font-size: 12px; background-color: var(--panel-bg); padding: 0 4px; color: var(--primary-color); }
+        .selector-group select { font-size: 16px; padding: 16px 12px 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; min-width: 280px; background-color: transparent; }
+        .save-button { background-color: var(--primary-color); color: white; border: none; padding: 10px 20px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; text-transform: uppercase; }
+
+        /* Main App Container */
+        #app-container { flex-grow: 1; overflow: hidden; }
+
+        /* Lenses App Specific Styles */
+        .lenses-editor-container { display: grid; grid-template-columns: 320px 1fr 360px; width: 100%; height: 100%; gap: 16px; padding: 16px; box-sizing: border-box;}
+        .panel { background-color: var(--panel-bg); border-radius: 4px; border: 1px solid transparent; box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); display: flex; flex-direction: column; overflow-y: auto; transition: background-color 0.3s ease, border-color 0.3s ease; }
+        .panel.is-active-context { background-color: var(--active-context-bg); border-color: var(--primary-color); }
+        .panel-header { padding: 16px; border-bottom: 1px solid var(--border-color); font-weight: 500; font-size: 18px; color: var(--text-primary); }
+        .panel-content { padding: 16px; flex-grow: 1; }
+        .panel-footer { padding: 16px; border-top: 1px solid var(--border-color); display: flex; gap: 8px; }
+        .panel-footer button { flex-grow: 1; }
+        #canvas { padding: 24px; position: relative; }
+        .atom { padding: 0; border: 2px solid transparent; border-radius: 4px; margin-bottom: 8px; cursor: grab; position: relative; }
+        .atom.dragging { opacity: 0.5; }
+        .atom:hover { border-color: #c5cae9; }
+        .atom.selected { border-color: var(--primary-color); }
+        .atom-content { padding: 16px; background-color: var(--panel-bg); }
+        .atom img { max-width: 100%; display: block; border-radius: 4px; }
+        .atom-placeholder { padding: 24px; border-radius: 4px; font-weight: 500; color: white; text-align: center; font-size: 14px; }
+        .atom-placeholder.interactive { background-color: #2196F3; }
+        .atom-placeholder.media { background-color: #9C27B0; }
+        .atom-placeholder.learnosity { background-color: #009688; }
+        .atom .conditional-badge { position: absolute; top: 8px; right: 8px; background-color: var(--accent-color); color: white; font-size: 11px; padding: 2px 6px; border-radius: 10px; font-weight: 500; cursor: help; z-index: 10; }
+        .drop-indicator { height: 4px; background-color: var(--accent-color); border-radius: 2px; display: none; position: absolute; width: calc(100% - 48px); pointer-events: none; z-index: 20; transition: top 0.1s ease-out, opacity 0.1s ease-out; }
+        .title-atom { font-size: 34px; font-weight: 700; line-height: 40px; margin: 0 0 8px 0; }
+        .author-atom { font-size: 16px; color: var(--text-primary); margin: 0 0 24px 0; }
+        .numbered-paragraph-atom { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px !important; }
+        .paragraph-number { font-size: 12px; color: var(--text-secondary); width: 20px; text-align: right; flex-shrink: 0; padding-top: 4px; }
+        .paragraph-text { margin: 0; line-height: 1.5; }
+        .glossary-term-canvas { color: var(--primary-color); font-weight: 700; cursor: help; }
+        .annotation-cue-container { border: 1px solid var(--annotation-cue-color); border-radius: 8px; padding: 16px; display: flex; gap: 12px; }
+        .cue-play-icon { flex-shrink: 0; margin-top: 2px; }
+        .cue-play-icon svg { width: 24px; height: 24px; color: var(--annotation-cue-color); }
+        .cue-content-wrapper { flex-grow: 1; }
+        .cue-header { display: flex; align-items: center; gap: 8px; color: var(--annotation-cue-color); font-weight: 500; margin-bottom: 8px; }
+        .cue-header svg { width: 18px; height: 18px; }
+        .cue-body { color: var(--text-secondary); }
+        .activity-item { padding: 8px; border-bottom: 1px solid var(--border-color); }
+        .add-atom-bar { text-align: center; margin-top: 16px; }
+        button { padding: 8px 16px; border: none; border-radius: 4px; background-color: rgba(0,0,0,0.05); cursor: pointer; font-size: 14px; font-weight: 500; text-transform: uppercase; transition: box-shadow 0.2s ease, background-color 0.2s ease; }
+        button:hover { background-color: rgba(0,0,0,0.08); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        button:disabled { cursor: not-allowed; background-color: rgba(0,0,0,0.12); color: var(--text-hint); box-shadow: none; }
+        button.primary { background-color: var(--primary-color); color: white; }
+        button.primary:hover { background-color: var(--primary-hover); box-shadow: 0 2px 4px rgba(0,0,0,0.25); }
+        select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--panel-bg); font-size: 14px; }
+        .form-group { margin-bottom: 16px; position: relative; }
+        .form-group label { display: block; font-weight: 500; color: var(--label-color); margin-bottom: 8px; font-size: 14px; }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 14px; }
+        .form-group input[readonly] { background-color: var(--bg-color); color: var(--text-secondary); }
+        .checkbox-group label { display: flex; align-items: center; margin-bottom: 8px; font-weight: normal; font-size: 14px; }
+        .checkbox-group input { width: auto; margin-right: 8px; }
+        .rule-card { background: var(--bg-color); padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 8px; }
+        .rule-card-header { display: flex; justify-content: space-between; align-items: center; }
+        .rule-card-header .title { font-weight: 500; font-size: 14px; }
+        .rule-card-header .actions { display: flex; gap: 8px; }
+        .icon-btn { background: none; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; width: 28px; height: 28px; color: var(--text-secondary);}
+        .icon-btn:hover { background-color: rgba(0,0,0,0.1); color: var(--text-primary); }
+        .icon-btn.delete:hover { color: var(--danger-color); }
+        .icon-btn svg { width: 20px; height: 20px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 999; display: none; }
+        .modal-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel-bg); z-index: 1000; border-radius: 4px; box-shadow: 0 11px 15px -7px rgba(0,0,0,0.2), 0 24px 38px 3px rgba(0,0,0,0.14), 0 9px 46px 8px rgba(0,0,0,0.12); width: 90%; max-width: 500px; display: none; flex-direction: column; max-height: 80vh; }
+        .modal-container.large { max-width: 700px; height: 70vh; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--border-color); }
+        .modal-header h3 { margin: 0; font-weight: 500; font-size: 20px; }
+        .modal-close-btn { font-size: 24px; font-weight: bold; color: var(--text-secondary); cursor: pointer; background: none; border: none; }
+        .modal-content { padding: 0; overflow-y: auto; flex-grow: 1; }
+        .modal-footer { padding: 8px 16px; border-top: 1px solid var(--border-color); text-align: right; }
+        .modal-tabs { display: flex; border-bottom: 1px solid var(--border-color); padding: 0 16px; }
+        .modal-tab-btn { flex: 1; padding: 12px; border: none; background: none; font-size: 14px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; }
+        .modal-tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+        .modal-tab-content { display: none; padding: 24px; }
+        .modal-tab-content.active { display: block; }
+        #json-output { width: 100%; height: 100%; font-family: monospace; font-size: 13px; border: 1px solid var(--border-color); border-radius: 4px; resize: none; }
+        #activity-link-list { list-style-type: none; padding: 0; margin: 0; }
+        #activity-link-list li { padding: 8px 0; border-bottom: 1px solid #eee; }
+        .property-preview-image { max-width: 100%; border-radius: 4px; border: 1px solid var(--border-color); margin-top: 8px; }
+        .collapsible-section { border-bottom: 1px solid var(--border-color); margin-bottom: 16px; padding-bottom: 16px; }
+        .collapsible-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .collapsible-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 4px 0; }
+        .collapsible-header h4, .collapsible-header h5 { margin: 0; font-size: 16px; font-weight: 500; }
+        .collapsible-header h5 { font-size: 14px; color: var(--text-secondary); }
+        .collapsible-toggle-icon { transition: transform 0.2s ease-in-out; color: var(--text-secondary); width: 24px; height: 24px; }
+        .collapsible-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out, margin-top 0.3s ease-out; margin-top: 0; }
+        .collapsible-section.open > .collapsible-content { max-height: 1000px; margin-top: 16px; }
+        .collapsible-section.open > .collapsible-header .collapsible-toggle-icon { transform: rotate(180deg); }
+        .metadata-section h5 { margin-top: 0; margin-bottom: 8px; color: var(--primary-color); font-size: 14px; font-weight: 500; }
+        .genre-tags { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; min-height: 38px; }
+        .genre-tag { background-color: var(--primary-color); color: white; padding: 3px 8px; border-radius: 16px; font-size: 12px; }
+        .metadata-display-list { font-size: 14px; line-height: 1.6; color: var(--text-primary); }
+        .metadata-display-list dt { font-weight: 500; color: var(--label-color); }
+        .metadata-display-list dd { margin-left: 16px; margin-bottom: 8px; color: var(--text-secondary); }
+        .activity-filters { display: flex; gap: 16px; }
+        .template-card { border: 1px solid var(--border-color); border-radius: 4px; padding: 16px; margin-bottom: 16px; }
+        .template-card h5 { margin-top: 0; font-size: 16px; }
+        .template-card .template-fields-list { list-style-type: none; padding-left: 16px; margin: 0; }
+        .definition-card { background: var(--bg-color); padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 12px; }
+        .glossary-term-list-container { margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 16px; }
+        .glossary-term-list-container h5 { margin: 0 0 8px 0; font-size: 14px; color: var(--text-secondary); }
+        .glossary-term-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .glossary-term-list-item { background-color: var(--active-context-bg); color: var(--primary-color); padding: 4px 10px; border-radius: 16px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--primary-color); transition: background-color 0.2s ease; }
+        .glossary-term-list-item:hover { background-color: var(--primary-color); color: white; }
+
+        /* --- CLEARMATH APP SPECIFIC STYLES --- */
+        .cleareditor-main-content { flex-grow: 1; display: flex; gap: 24px; overflow: hidden; padding: 24px; box-sizing: border-box; }
+        .editor-column { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+        .column-header { display: flex; justify-content: space-between; align-items: center; font-size: 24px; font-weight: 500; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--primary-color); position: sticky; top: -1px; background: var(--bg-color); z-index: 10; padding-top: 24px; margin-top: -24px; flex-shrink: 0; }
+        .column-header small { font-size: 14px; color: var(--text-secondary); font-weight: 400; }
+        .column-header-controls { display: flex; align-items: center; gap: 8px; }
+        .view-toggle-btn { background: none; border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer; border-radius: 4px; padding: 4px 10px; font-size: 0.9rem; font-weight: 500; }
+        .view-toggle-btn.active { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
+        .source-view-textarea { width: 100%; height: 100%; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 0.9rem; padding: 1rem; resize: none; }
+        .source-view-textarea.error { border-color: #f44336; }
+        .pdf-view-iframe { width: 100%; height: 100%; border: none; }
+        .srb-column-header { display: flex; justify-content: space-between; align-items: center; flex-grow: 1; }
+        .add-break-btn { background-color: #e8eaf6; color: var(--primary-color); border: 1px solid var(--primary-color); padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; }
+        .slide-break-feature { display: flex; align-items: center; gap: 8px; padding: 8px; border-top: 2px dashed var(--primary-color); border-bottom: 2px dashed var(--primary-color); margin: 24px 0; color: var(--primary-color); font-weight: 500; }
+        .slide-break-feature button { background: #ffcdd2; color: #c62828; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-weight: bold; }
+        .slide-break-indicator { height: 2px; background-image: linear-gradient(to right, var(--primary-color) 33%, rgba(255,255,255,0) 0%); background-position: bottom; background-size: 3px 1px; background-repeat: repeat-x; margin: 24px 0; }
+        .drag-handle { cursor: grab; }
+        .section-header { font-size: 20px; font-weight: 500; margin: 40px 0 16px 0; color: var(--text-secondary); }
+        .block-group { border: 2px solid var(--border-color); border-radius: 8px; margin-bottom: 24px; }
+        .block-group-header { font-size: 16px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); background-color: #fafafa; padding: 12px 24px; border-bottom: 2px solid var(--border-color); border-radius: 8px 8px 0 0; }
+        .block-group-content { padding: 8px 24px 24px 24px; }
+        .feature-card { background-color: var(--panel-bg); border-radius: 4px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+        .feature-header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
+        .feature-header h3 { margin: 0; font-size: 18px; font-weight: 500; flex-grow: 1; }
+        .feature-header .feature-type-badge { font-size: 12px; color: var(--primary-color); background-color: #e8eaf6; padding: 4px 8px; border-radius: 12px; font-family: monospace; }
+        .feature-content { padding: 24px; }
+        .form-field { margin-bottom: 20px; }
+        .form-field label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
+        .form-field input[type="text"], textarea, select { width: 100%; font-size: 14px; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; box-sizing: border-box; }
+        .loader { text-align: center; padding: 40px; font-size: 18px; color: var(--text-secondary); width: 100%; }
+        .editable-content { min-height: 40px; border: 2px dashed transparent; padding: 10px; margin: -12px; border-radius: 4px; transition: border-color 0.2s, background-color 0.2s; cursor: text; }
+        .editable-content:hover { border-color: #90caf9; background-color: #f5faff; }
+        .read-only-content { min-height: 40px; padding: 12px; margin: 0; border-radius: 4px; background-color: #f0f0f0; color: #666; border: 1px solid #e0e0e0; }
+        .static-header-card { display: flex; align-items: center; gap: 16px; padding: 12px 0px; font-size: 18px; font-weight: 700; color: var(--text-secondary); border-bottom: 2px solid var(--border-color); margin-bottom: 20px; }
+        .static-header-card select { flex: 0 0 90px; }
+        .static-header-card input { flex: 1 1 auto; }
+        .qti-interaction { border-left: 4px solid var(--primary-color); padding-left: 16px; margin-top: 16px; }
+        .qti-answer { border-left: 4px solid magenta; padding-left: 16px; }
+        .graphic-placeholder { border: 2px dashed var(--border-color); padding: 16px; text-align: center; color: var(--text-secondary); border-radius: 4px; }
+        .answer-header { display: flex; justify-content: space-between; align-items: center; }
+        .sample-answer-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
+        th { font-weight: 500; color: var(--text-secondary); }
+        .structured-list-item { border: 1px solid #eee; padding: 16px; margin-bottom: 16px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <header id="main-app-header">
+        <div class="header-brand">
+            <img src="images/clay-logo.png" alt="Clay Logo">
+            <span class="product-name">Atomic Builder</span>
+        </div>
+        <div class="selector-group">
+            <label for="doc-type-selector">Document Type</label>
+            <select id="doc-type-selector">
+                <option value="lenses">Lenses Text Selection v1.0</option>
+                <option value="clearmath">ClearMath Secondary Lesson v1.0</option>
+            </select>
+        </div>
+        <div id="app-header-controls">
+            <!-- Dynamic controls will be injected here -->
+        </div>
+        <div class="user-profile">
+            <span id="version-display" class="version-tag"></span>
+            <span class="user-name">K. Allard</span>
+            <img src="images/avatar.png" alt="User Avatar" class="avatar">
+        </div>
+    </header>
+    
+    <main id="app-container">
+        <!-- The selected editor app will be rendered here -->
+    </main>
+    
+    <!-- Modals (shared or specific to Lenses) -->
+    <div id="json-modal-overlay" class="modal-overlay"></div>
+    <div id="json-modal-container" class="modal-container large">
+        <div class="modal-header">
+            <h3>Document JSON Output</h3>
+            <button class="modal-close-btn" data-modal="json">&times;</button>
+        </div>
+        <div class="modal-content">
+            <textarea id="json-output"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button id="save-json-btn" class="primary">Save to Computer</button>
+        </div>
+    </div>
+
+    <div id="activity-modal-overlay" class="modal-overlay"></div>
+    <div id="activity-modal-container" class="modal-container">
+        <div class="modal-header">
+            <h3>Link Activities</h3>
+            <button class="modal-close-btn" data-modal="activity">&times;</button>
+        </div>
+        <div class="modal-content" style="padding: 24px;">
+            <div style="padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color);">
+                <div class="form-group" style="margin-bottom: 8px;">
+                    <label for="new-activity-name-modal">Create New Activity</label>
+                    <input type="text" id="new-activity-name-modal" placeholder="Enter new activity name...">
+                </div>
+                <button id="create-link-activity-btn" disabled>Create & Link (Select Grade/Unit)</button>
+            </div>
+            <div class="activity-filters">
+                <div class="form-group" style="flex:1;">
+                    <label for="activity-grade-filter">Grade</label>
+                    <select id="activity-grade-filter"></select>
+                </div>
+                <div class="form-group" style="flex:2;">
+                    <label for="activity-unit-filter">Unit</label>
+                    <select id="activity-unit-filter"></select>
+                </div>
+            </div>
+            <input type="text" id="activity-search" placeholder="Search activities in selected unit..." style="margin-bottom: 1rem; width: 100%;">
+            <ul id="activity-link-list"></ul>
+        </div>
+        <div class="modal-footer">
+            <button id="cancel-link-activity-btn">Cancel</button>
+            <button id="save-link-activity-btn" class="primary">Save Links</button>
+        </div>
+    </div>
+
+    <div id="metadata-modal-overlay" class="modal-overlay"></div>
+    <div id="metadata-modal-container" class="modal-container">
+        <div class="modal-header">
+            <h3 id="metadata-modal-title">Associate Metadata</h3>
+            <button class="modal-close-btn" data-modal="metadata">&times;</button>
+        </div>
+        <div class="modal-tabs">
+            <button class="modal-tab-btn active" data-tab="search">Search</button>
+            <button class="modal-tab-btn" data-tab="templates">Templates</button>
+        </div>
+        <div class="modal-content">
+            <div id="metadata-tab-search" class="modal-tab-content active">
+                <input type="text" id="metadata-search" placeholder="Search associated metadata..." style="margin-bottom: 1rem; width: 100%;">
+                <div class="metadata-section">
+                    <h5>Metadata</h5>
+                    <div id="associated-metadata-list"></div>
+                </div>
+                 <div class="metadata-section" style="margin-top: 1.5rem;">
+                    <h5>Available Associations</h5>
+                    <div id="available-associations-list" class="checkbox-group"></div>
+                    <button id="add-selected-associations-btn" style="margin-top: 1rem;">Add Selected</button>
+                </div>
+            </div>
+            <div id="metadata-tab-templates" class="modal-tab-content">
+                <!-- Template content will be rendered here -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="save-metadata-btn" class="primary">Save Metadata</button>
+        </div>
+    </div>
+    
+    <div id="genre-modal-overlay" class="modal-overlay" style="z-index: 1001;"></div>
+    <div id="genre-modal-container" class="modal-container" style="z-index: 1002; max-width: 400px; max-height: 60vh;">
+         <div class="modal-header">
+            <h3>Select Genres</h3>
+            <button class="modal-close-btn" data-modal="genre">&times;</button>
+        </div>
+        <div class="modal-content checkbox-group" id="genre-selection-list" style="padding: 24px;"></div>
+        <div class="modal-footer">
+            <button id="cancel-genre-btn">Cancel</button>
+            <button id="save-genre-btn" class="primary">Save Genres</button>
+        </div>
+    </div>
+    
+    <div id="glossary-modal-overlay" class="modal-overlay"></div>
+    <div id="glossary-modal-container" class="modal-container">
+         <div class="modal-header">
+            <h3>Glossary Entry Editor</h3>
+            <button class="modal-close-btn" data-modal="glossary">&times;</button>
+        </div>
+        <div class="modal-content" style="padding: 24px;">
+            <div class="form-group">
+                <label>Term</label>
+                <input type="text" id="glossary-term-text" readonly>
+            </div>
+            <hr>
+            <div id="definitions-list"></div>
+            <button id="add-definition-btn">Add Definition</button>
+        </div>
+        <div class="modal-footer">
+            <button id="cancel-glossary-btn">Cancel</button>
+            <button id="save-glossary-btn" class="primary">Save Entry</button>
+        </div>
+    </div>
+    
+    <script>
+        // This key is necessary for the ClearMath editor.
+        const TINY_MCE_API_KEY = 'tth7kpsyc53fbzgd6zz6kz2huhefefwxbts007tf2zx7ab4t';
+
+        function getLensesAppHTML() {
+            return `
+                <div class="lenses-editor-container">
+                    <!-- Left Panel -->
+                    <div id="document-panel" class="panel">
+                        <div class="panel-header">Document Properties</div>
+                        <div class="panel-content">
+                            <div class="form-group"><label>Document ID</label><input type="text" id="doc-id" readonly></div>
+                            <div id="relationships-section" class="collapsible-section open" data-section-id="relationships">
+                                <div class="collapsible-header"><h4>Relationships</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div>
+                                <div class="collapsible-content">
+                                    <div class="collapsible-section open"><div class="collapsible-header"><h5>Linked Activities</h5><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div id="activity-list"></div><button id="link-activity-btn">Link Activity</button></div></div>
+                                    <div class="collapsible-section"><div class="collapsible-header"><h5>Levels of Support</h5><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div id="support-levels-list" class="checkbox-group"></div></div></div>
+                                </div>
+                            </div>
+                            <div class="collapsible-section" data-section-id="metadata"><div class="collapsible-header"><h4>Metadata</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div id="doc-metadata-display"></div><button id="edit-doc-metadata-btn">Edit Metadata</button></div></div>
+                        </div>
+                        <div class="panel-footer"><button id="open-json-btn">Open JSON</button><button id="generate-json-btn" class="primary">Generate JSON</button></div>
+                    </div>
+                    <!-- Center Panel -->
+                    <div id="canvas-panel" class="panel"><div id="canvas" class="panel-content"><div class="drop-indicator"></div></div><div class="add-atom-bar"><select id="add-atom-type"><option value="title">Title</option><option value="author">Author</option><option value="numbered-paragraph">Numbered Paragraph</option><option value="text">Text (General)</option><option value="media">Media</option><option value="interactive">Interactive</option><option value="learnosity">Learnosity</option></select><button id="add-atom-btn" class="primary">Add Content Atom</button></div></div>
+                    <!-- Right Panel -->
+                    <div id="properties-panel" class="panel"><div class="panel-header">Atom Properties</div><div id="properties-content" class="panel-content"><p>Select an atom to see its properties.</p></div></div>
+                    <!-- Hidden file inputs -->
+                    <input type="file" id="media-file-input" accept="image/*" style="display: none;"><input type="file" id="json-file-input" accept=".json,application/json" style="display: none;">
+                </div>
+            `;
+        }
+
+        function getClearMathAppHTML() {
+            return `
+                <div class="cleareditor-main-content">
+                    <div class="loader">Loading Editor...</div>
+                </div>
+            `;
+        }
+        
+        function getClearMathHeaderControlsHTML() {
+            return `
+                <div class="selector-group"><label for="course-selector">Course</label><select id="course-selector"></select></div>
+                <div class="selector-group"><label for="lesson-selector">Lesson</label><select id="lesson-selector"></select></div>
+                <button id="save-button" class="save-button">Save Changes</button>
+            `;
+        }
+
+        // --- APP INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const appContainer = document.getElementById('app-container');
+            const docTypeSelector = document.getElementById('doc-type-selector');
+            const headerControls = document.getElementById('app-header-controls');
+            
+            function loadApp(appType) {
+                // Clear any existing app content and controls
+                appContainer.innerHTML = '';
+                headerControls.innerHTML = '';
+
+                if (appType === 'lenses') {
+                    appContainer.innerHTML = getLensesAppHTML();
+                    initializeLensesApp();
+                } else if (appType === 'clearmath') {
+                    headerControls.innerHTML = getClearMathHeaderControlsHTML();
+                    appContainer.innerHTML = getClearMathAppHTML();
+                    
+                    // TinyMCE needs to be loaded for ClearMath App
+                    const script = document.createElement('script');
+                    script.src = `https://cdn.tiny.cloud/1/${TINY_MCE_API_KEY}/tinymce/6/tinymce.min.js`;
+                    script.referrerPolicy = 'origin';
+                    script.onload = () => { console.log("TinyMCE loaded for ClearMath."); initializeClearMathApp(); };
+                    script.onerror = () => { appContainer.innerHTML = `<div class="loader" style="color:red;">Error: Failed to load TinyMCE script.</div>`; }
+                    document.head.appendChild(script);
+                }
+            }
+            
+            docTypeSelector.addEventListener('change', (e) => loadApp(e.target.value));
+
+            // Load the default app on initial page load
+            loadApp(docTypeSelector.value);
+        });
+
+        // --- LENSES APP LOGIC ---
+        function initializeLensesApp() {
+            const APP_VERSION = "rc1.beta.0.23";
+            document.getElementById('version-display').textContent = APP_VERSION;
+            
+            let manifest = {}; let activityLookup = {};
+            const ALL_SUPPORT_LEVELS = ['core', 'light', 'moderate', 'intensive', 'light-multilingual', 'moderate-multilingual', 'intensive-multilingual'];
+            const PARTS_OF_SPEECH = ['noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'interjection', 'other'];
+            const METADATA_FIELDS = {
+                document: [
+                    { key: "Title", type: "text" }, { key: "Author", type: "text" },
+                    { key: "Genre", type: "multiselect-genre" }, { key: "Keywords", type: "text" },
+                    { key: "Summary", type: "textarea" }, { key: "Publication Date", type: "date" },
+                    { key: "Identifier (ISBN/DOI)", type: "text" }, { key: "Language", type: "text" },
+                    { key: "Copyright", type: "text" }, { key: "Subject", type: "text" },
+                    { key: "Lexile Level", type: "number" }
+                ],
+                atom: [
+                    { key: "Skill Code(s)", type: "text" }, { key: "Instructional Strategy", type: "text" },
+                    { key: "Learning Objective", type: "textarea" }, { key: "Depth of Knowledge (DOK)", type: "number" },
+                    { key: "Standard Alignment", type: "text" },
+                    { key: "Artifact of Learning", type: "text"}
+                ]
+            };
+            const MOCK_GENRES = ["Fiction", "Non-Fiction", "Short Story", "Science Fiction", "Fantasy", "Mystery", "Biography", "History", "Poetry", "Technical", "Satire"];
+            const METADATA_TEMPLATES = {
+                document: [{ name: "Lenses Text Selection", fields: ["Title", "Author", "Genre", "Keywords", "Summary", "Lexile Level"] }],
+                atom: [{ name: "Lenses Activity", fields: ["Instructional Strategy", "Artifact of Learning"] }]
+            };
+
+            let documentState = { id: generateUUID(), linkedActivityIds: [], customActivities: [], availableSupportLevels: [...ALL_SUPPORT_LEVELS], metadata: [{key: "Title", value: "New Document"}], atoms: [] };
+            let selectedAtomId = null;
+            let currentMetadataContext = { type: null, target: null };
+            let currentGlossaryContext = { atomId: null, entry: null, selection: null };
+
+            function generateUUID() { return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
+            function generateDeterministicId(grade, unit, activityName) { const sanitize = (str) => String(str).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''); return `act-${sanitize(grade)}-${sanitize(unit)}-${sanitize(activityName)}`; }
+            
+            function getRuleTooltipText(atom) {
+                if (!atom.displayRules || atom.displayRules.length === 0) return 'No rules applied.';
+                let tooltipText = '';
+                atom.displayRules.forEach((rule, index) => {
+                    const activityName = activityLookup[rule.activityId]?.name || "Any Linked Activity";
+                    const supportLevels = (rule.supportLevel || []).length > 0 ? (rule.supportLevel.join(', ').replace(/-/g, ' ')) : "All Available Levels";
+                    tooltipText += `Rule ${index + 1}:\n- Activity: ${activityName}\n- Support: ${supportLevels}`;
+                    if (index < atom.displayRules.length - 1) { tooltipText += '\n\n'; }
+                });
+                return tooltipText;
+            }
+
+            function renderLinkedActivities() { const listEl = document.getElementById('activity-list'); listEl.innerHTML = ''; if (documentState.linkedActivityIds.length === 0) { listEl.innerHTML = '<p style="font-size: 0.9em; color: var(--text-secondary);">No activities linked yet.</p>'; return; } const fragment = document.createDocumentFragment(); documentState.linkedActivityIds.forEach(id => { const activity = activityLookup[id]; if (activity) { const itemEl = document.createElement('div'); itemEl.className = 'activity-item'; itemEl.textContent = activity.name; fragment.appendChild(itemEl); } else { const itemEl = document.createElement('div'); itemEl.className = 'activity-item'; itemEl.style.color = 'var(--danger-color)'; itemEl.textContent = `Broken Link: ${id}`; fragment.appendChild(itemEl); } }); listEl.appendChild(fragment); }
+            function renderSupportLevels() { const listEl = document.getElementById('support-levels-list'); listEl.innerHTML = ''; ALL_SUPPORT_LEVELS.forEach(level => { const isChecked = documentState.availableSupportLevels.includes(level); const label = document.createElement('label'); label.innerHTML = `<input type="checkbox" data-level="${level}" ${isChecked ? 'checked' : ''}> ${level.replace(/-/g, ' ')}`; listEl.appendChild(label); }); }
+            function renderCanvas() { const canvas = document.getElementById('canvas'); canvas.innerHTML = '<div class="drop-indicator"></div>'; let numberedParagraphCounter = 1; documentState.atoms.forEach(atom => { const atomEl = document.createElement('div'); atomEl.className = 'atom'; atomEl.dataset.atomId = atom.id; atomEl.dataset.atomType = atom.type; atomEl.draggable = true; if (atom.id === selectedAtomId) atomEl.classList.add('selected'); let content = ''; let textWithGlossary = atom.content?.text || ''; if(atom.glossaryEntries && textWithGlossary) { textWithGlossary = textWithGlossary.replace(/</g, "&lt;").replace(/>/g, "&gt;"); atom.glossaryEntries.slice().sort((a,b) => b.startOffset - a.startOffset).forEach(entry => { const tooltipParts = entry.definitions.map((def, i) => { const pos = def.partOfSpeech ? ` (${def.partOfSpeech})` : ''; return `Definition ${i + 1}${pos}:\n${def.definitionText}`; }); const tooltip = `${entry.termText}\n\n${tooltipParts.join('\n\n')}`; textWithGlossary = `${textWithGlossary.substring(0, entry.startOffset)}<span class="glossary-term-canvas" title="${tooltip.replace(/"/g, '&quot;')}">${entry.termText}</span>${textWithGlossary.substring(entry.endOffset)}`; }); } switch (atom.type) { case 'title': const titleMeta = documentState.metadata.find(m => m.key === 'Title')?.value || '[Title]'; content = `<h1 class="title-atom">${titleMeta}</h1>`; break; case 'author': const authorMeta = documentState.metadata.find(m => m.key === 'Author')?.value || '[Author]'; const dateMeta = documentState.metadata.find(m => m.key === 'Publication Date')?.value; const year = dateMeta ? `, ${new Date(dateMeta).getFullYear() + 1}` : ''; content = `<p class="author-atom">by ${authorMeta}${year}</p>`; break; case 'numbered-paragraph': const paraText = textWithGlossary || '<em style="color:#999;">Empty paragraph...</em>'; content = `<div class="numbered-paragraph-atom"><span class="paragraph-number">${numberedParagraphCounter++}</span><p class="paragraph-text">${paraText}</p></div>`; break; case 'text': if (atom.content.subtype === 'annotation-cue') { const textContent = textWithGlossary || '<em style="color:#999;">Type question or prompt here...</em>'; content = `<div class="annotation-cue-container"><div class="cue-play-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z" /></svg></div><div class="cue-content-wrapper"><div class="cue-header"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg> <span>Stop and Annotate</span></div><div class="cue-body">${textContent}</div></div></div>`; } else { const tag = atom.content.subtype === 'heading' ? 'h2' : 'p'; const textContent = textWithGlossary || '<em style="color:#999;">Empty text atom...</em>'; content = `<div class="atom-content"><${tag}>${textContent}</${tag}></div>`; } break; case 'media': if (atom.content.src) { content = `<img src="${atom.content.src}" alt="User uploaded media">`; } else { content = `<div class="atom-placeholder media">Media: No image selected</div>`; } break; default: let placeholderText = ''; switch(atom.type) { case 'interactive': placeholderText = `Interactive Placeholder`; break; case 'learnosity': placeholderText = `Learnosity Item Placeholder`; break; } content = `<div class="atom-placeholder ${atom.type}">${placeholderText}</div>`; } atomEl.innerHTML = content; if ((atom.displayRules || []).length > 0) { const badge = document.createElement('span'); badge.className = 'conditional-badge'; badge.textContent = 'R'; badge.title = getRuleTooltipText(atom); atomEl.appendChild(badge); } canvas.appendChild(atomEl); }); }
+            function renderPropertiesPanel() { const propertiesContent = document.getElementById('properties-content'); const relationshipsPanel = document.getElementById('relationships-section'); const openStates = {}; propertiesContent.querySelectorAll('.collapsible-section[data-section-id]').forEach(section => { if (section.classList.contains('open')) { openStates[section.dataset.sectionId] = true; } }); if (!selectedAtomId) { propertiesContent.innerHTML = '<p>Select an atom to see its properties.</p>'; relationshipsPanel.classList.remove('is-active-context'); return; } relationshipsPanel.classList.add('is-active-context'); const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; let contentHtml = ''; let glossaryListHtml = ''; if (atom.glossaryEntries && atom.glossaryEntries.length > 0) { const listItems = atom.glossaryEntries.sort((a, b) => a.termText.localeCompare(b.termText)).map(entry => `<span class="glossary-term-list-item" data-glossary-id="${entry.id}">${entry.termText}</span>`).join(''); glossaryListHtml = `<div class="glossary-term-list-container"><h5>Defined Terms</h5><div class="glossary-term-list">${listItems}</div></div>`; } switch(atom.type) { case 'title': contentHtml = `<p style="font-size:0.9em; color:var(--text-secondary)">This atom displays the Document's Title metadata. Edit this in Document Properties &gt; Metadata.</p>`; break; case 'author': contentHtml = `<p style="font-size:0.9em; color:var(--text-secondary)">This atom displays the Document's Author and Publication Date metadata. Edit this in Document Properties &gt; Metadata.</p>`; break; case 'numbered-paragraph': contentHtml = `<div class="form-group"><label>Text Content</label><textarea class="property-input text-editor" data-property="text" data-path="content">${atom.content.text || ''}</textarea><button id="add-glossary-term-btn" disabled style="margin-top: 8px;">Add Glossary Term</button>${glossaryListHtml}</div>`; break; case 'text': contentHtml = `<div class="form-group"><label>Subtype</label><select class="property-input" data-property="subtype" data-path="content"><option value="paragraph" ${atom.content.subtype === 'paragraph' ? 'selected' : ''}>Paragraph</option><option value="heading" ${atom.content.subtype === 'heading' ? 'selected' : ''}>Heading</option><option value="annotation-cue" ${atom.content.subtype === 'annotation-cue' ? 'selected' : ''}>Annotation Cue</option></select></div><div class="form-group"><label>Text Content</label><textarea class="property-input text-editor" data-property="text" data-path="content">${atom.content.text || ''}</textarea><button id="add-glossary-term-btn" disabled style="margin-top: 8px;">Add Glossary Term</button>${glossaryListHtml}</div>`; break; case 'media': const previewImage = atom.content.src ? `<img src="${atom.content.src}" class="property-preview-image">` : '<p style="font-size:0.9em;color:#777">No image selected.</p>'; contentHtml = `<div class="form-group"><label>Image Source</label><button id="choose-image-btn">Choose Image</button>${previewImage}</div>`; break; default: contentHtml = `<p>Properties for <strong>${atom.type}</strong> atoms would go here.</p>`; } const rulesHtml = (atom.displayRules || []).map((rule, index) => { const linkedActivities = documentState.linkedActivityIds.map(id => activityLookup[id]).filter(Boolean); if (rule.isEditing) { const activityOptions = linkedActivities.map(act => `<option value="${act.id}" ${rule.activityId === act.id ? 'selected' : ''}>${act.name}</option>`).join(''); const supportCheckboxes = documentState.availableSupportLevels.map(level => `<label><input type="checkbox" class="rule-input-checkbox" data-level="${level}" ${(rule.supportLevel || []).includes(level) ? 'checked' : ''}> ${level.replace(/-/g, ' ')}</label>`).join(''); const allChecked = documentState.availableSupportLevels.length > 0 && documentState.availableSupportLevels.every(level => (rule.supportLevel || []).includes(level)); return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Editing Criterion ${index + 1}</span><div class="actions"><button class="icon-btn save-rule-btn" title="Save Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z" /></svg></button></div></div><div class="form-group"><label>Activity</label><select class="rule-input" data-property="activityId"><option value="">Any Linked Activity</option>${activityOptions}</select></div><div class="form-group checkbox-group"><label><input type="checkbox" class="check-all-support" ${allChecked ? 'checked' : ''}> <strong>Support Level(s)</strong></label><div class="support-level-options">${supportCheckboxes}</div></div></div>`; } else { const activityName = linkedActivities.find(a => a.id === rule.activityId)?.name || "Any Linked Activity"; const levels = rule.supportLevel.length > 0 ? rule.supportLevel.join(', ').replace(/-/g, ' ') : "All Available Levels"; return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Criterion ${index + 1}</span><div class="actions"><button class="icon-btn edit-rule-btn" title="Edit Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button><button class="icon-btn delete-rule-btn delete" title="Delete Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg></button></div></div><p style="font-size:0.9em; margin: 0.5em 0; line-height: 1.5;"><strong>Activity:</strong> ${activityName}<br><strong>Support:</strong> ${levels}</p></div>`; } }).join(''); propertiesContent.innerHTML = `<div class="collapsible-section ${openStates['core'] ? 'open' : ''}" data-section-id="core"><div class="collapsible-header"><h4>Core Properties</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div class="form-group"><label>Atom ID</label><input type="text" value="${atom.id}" readonly></div>${contentHtml}</div></div><div class="collapsible-section ${openStates['criteria'] ? 'open' : ''}" data-section-id="criteria"><div class="collapsible-header"><h4>Display Criteria</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div id="rules-container">${rulesHtml}</div><button id="add-rule-btn">Add Display Criterion</button></div></div><div class="collapsible-section ${openStates['metadata'] ? 'open' : ''}" data-section-id="metadata"><div class="collapsible-header"><h4>Metadata</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div class="atom-metadata-display"></div><button class="edit-atom-metadata-btn">Edit Metadata</button></div></div><button id="delete-atom-btn" style="background-color: var(--danger-color); color: white; width: 100%; margin-top: 1rem;">Delete Atom</button>`; renderMetadataDisplay(atom, propertiesContent.querySelector('.atom-metadata-display')); }
+            function renderMetadataDisplay(target, containerEl) { containerEl.innerHTML = ''; if (!target || !target.metadata || target.metadata.length === 0) { containerEl.innerHTML = '<p style="font-size: 0.9em; color: var(--text-secondary);">No metadata associated.</p>'; return; } const dl = document.createElement('dl'); dl.className = 'metadata-display-list'; target.metadata.forEach(meta => { if (meta.value && meta.value.length > 0) { const dt = document.createElement('dt'); dt.textContent = meta.key; const dd = document.createElement('dd'); dd.textContent = Array.isArray(meta.value) ? meta.value.join(', ') : meta.value; dl.appendChild(dt); dl.appendChild(dd); } }); containerEl.appendChild(dl); }
+            function fullRender() { document.getElementById('doc-id').value = documentState.id; renderLinkedActivities(); renderSupportLevels(); renderCanvas(); renderPropertiesPanel(); renderMetadataDisplay(documentState, document.getElementById('doc-metadata-display')); }
+            document.getElementById('add-atom-btn').addEventListener('click', () => { const type = document.getElementById('add-atom-type').value; const newAtom = { id: generateUUID(), type: type, displayRules: [{activityId:'', supportLevel:[...documentState.availableSupportLevels], isEditing:false}], metadata: [], glossaryEntries: [] }; switch(type) { case 'text': newAtom.content = { subtype: 'paragraph', text: '' }; break; case 'title': case 'author': case 'numbered-paragraph': newAtom.content = {text: ''}; break; case 'media': newAtom.content = { src: '' }; break; default: newAtom.content = {}; break; } documentState.atoms.push(newAtom); selectedAtomId = newAtom.id; fullRender(); });
+            document.getElementById('canvas').addEventListener('click', (e) => { const atomEl = e.target.closest('.atom'); if (atomEl) { selectedAtomId = atomEl.dataset.atomId; fullRender(); } });
+            document.getElementById('support-levels-list').addEventListener('change', e => { if (e.target.type === 'checkbox') { const level = e.target.dataset.level; if (e.target.checked) { if (!documentState.availableSupportLevels.includes(level)) documentState.availableSupportLevels.push(level); } else { documentState.availableSupportLevels = documentState.availableSupportLevels.filter(l => l !== level); } renderPropertiesPanel(); } });
+            const propertiesContent = document.getElementById('properties-content'); propertiesContent.addEventListener('input', e => { if (e.target.classList.contains('property-input')) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvas(); } }); propertiesContent.addEventListener('change', e => { if (e.target.classList.contains('property-input') && e.target.tagName === 'SELECT') { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvas(); } });
+            const mediaFileInput = document.getElementById('media-file-input'); mediaFileInput.addEventListener('change', (e) => { const file = e.target.files[0]; if (file && selectedAtomId) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (atom && atom.type === 'media') { atom.content.src = URL.createObjectURL(file); atom.content.fileName = file.name; fullRender(); } } e.target.value = null; });
+            propertiesContent.addEventListener('click', e => { const targetElement = e.target; if (targetElement.classList.contains('glossary-term-list-item')) { const termId = targetElement.dataset.glossaryId; const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom || !termId) return; const entry = (atom.glossaryEntries || []).find(ge => ge.id === termId); if (entry) { currentGlossaryContext.atomId = atom.id; currentGlossaryContext.entry = entry; currentGlossaryContext.selection = null; renderGlossaryModal(); openModal('glossary'); } return; } const button = targetElement.closest('.icon-btn, button'); if (!button) { if (targetElement.classList.contains('check-all-support')) { const ruleCard = targetElement.closest('.rule-card'); const checkboxes = ruleCard.querySelectorAll('.rule-input-checkbox'); checkboxes.forEach(cb => cb.checked = targetElement.checked); } else if (targetElement.classList.contains('rule-input-checkbox')) { const ruleCard = targetElement.closest('.rule-card'); const allCheckboxes = ruleCard.querySelectorAll('.rule-input-checkbox'); const checkedCheckboxes = ruleCard.querySelectorAll('.rule-input-checkbox:checked'); ruleCard.querySelector('.check-all-support').checked = allCheckboxes.length === checkedCheckboxes.length; } return; } if(button.id === 'choose-image-btn') { mediaFileInput.click(); return; } if(button.classList.contains('edit-atom-metadata-btn')) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (atom) { currentMetadataContext = { type: 'atom', target: atom }; renderMetadataModal(); openModal('metadata'); } return; } if (button.id === 'add-glossary-term-btn') { const textarea = propertiesContent.querySelector('.text-editor'); if (textarea.selectionStart === textarea.selectionEnd) { alert("You must first select a word or phrase for the glossary entry."); return; } const selection = { start: textarea.selectionStart, end: textarea.selectionEnd, text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd) }; const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; currentGlossaryContext.atomId = atom.id; currentGlossaryContext.selection = selection; const existingEntry = (atom.glossaryEntries || []).find(ge => ge.startOffset === selection.start && ge.endOffset === selection.end); currentGlossaryContext.entry = existingEntry || { id: generateUUID(), termText: selection.text, startOffset: selection.start, endOffset: selection.end, definitions: [] }; renderGlossaryModal(); openModal('glossary'); return; } const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; if (button.id === 'add-rule-btn') { atom.displayRules.push({ activityId: '', supportLevel: [], isEditing: true }); button.closest('.collapsible-section').classList.add('open'); fullRender(); } else if (button.id === 'delete-atom-btn') { if (confirm('Are you sure you want to delete this atom?')) { documentState.atoms = documentState.atoms.filter(a => a.id !== selectedAtomId); selectedAtomId = null; fullRender(); } } else { const ruleCard = button.closest('.rule-card'); if (!ruleCard) return; const ruleIndex = parseInt(ruleCard.dataset.ruleIndex, 10); const rule = atom.displayRules[ruleIndex]; if (button.classList.contains('edit-rule-btn')) { rule.isEditing = true; button.closest('.collapsible-section').classList.add('open'); fullRender(); } else if (button.classList.contains('save-rule-btn')) { rule.activityId = ruleCard.querySelector('.rule-input[data-property="activityId"]').value; const checkedLevels = Array.from(ruleCard.querySelectorAll('.rule-input-checkbox:checked')).map(cb => cb.dataset.level); rule.supportLevel = checkedLevels; delete rule.isEditing; fullRender(); } else if (button.classList.contains('delete-rule-btn')) { atom.displayRules.splice(ruleIndex, 1); fullRender(); } } });
+            function handleTextSelectionChange(e) { if (e.target.classList.contains('text-editor')) { const textarea = e.target; const btn = document.getElementById('add-glossary-term-btn'); setTimeout(() => { if (btn) { btn.disabled = textarea.selectionStart === textarea.selectionEnd; } }, 1); } }
+            propertiesContent.addEventListener('keyup', handleTextSelectionChange);
+            propertiesContent.addEventListener('mouseup', handleTextSelectionChange);
+            function openModal(type) { document.getElementById(`${type}-modal-overlay`).style.display = 'block'; document.getElementById(`${type}-modal-container`).style.display = 'flex'; }
+            function closeModal(type) { document.getElementById(`${type}-modal-overlay`).style.display = 'none'; document.getElementById(`${type}-modal-container`).style.display = 'none'; }
+            document.getElementById('generate-json-btn').addEventListener('click', () => { document.getElementById('json-output').value = JSON.stringify(documentState, null, 2); openModal('json'); });
+            document.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.modal)));
+            document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', (e) => { if (e.target === el) closeModal(el.id.split('-')[0]); }));
+            document.getElementById('save-json-btn').addEventListener('click', () => { const jsonString = document.getElementById('json-output').value; const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const titleMeta = documentState.metadata.find(m => m.key === 'Title'); const safeTitle = (titleMeta?.value || "document").replace(/[^a-z0-9]/gi, '_').toLowerCase(); a.download = `${safeTitle}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); });
+            const jsonFileInput = document.getElementById('json-file-input'); document.getElementById('open-json-btn').addEventListener('click', () => jsonFileInput.click()); jsonFileInput.addEventListener('change', (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const loadedState = JSON.parse(event.target.result); if (loadedState && loadedState.id && loadedState.metadata && Array.isArray(loadedState.atoms)) { documentState = loadedState; if (documentState.customActivities && Array.isArray(documentState.customActivities)) { documentState.customActivities.forEach(customAct => { if(!activityLookup[customAct.id]) { activityLookup[customAct.id] = customAct; } }); } selectedAtomId = null; fullRender(); } else { alert('Error: The selected file is not a valid Atomic Builder document.'); } } catch (error) { alert('Error: Could not parse the JSON file.'); console.error("JSON parsing error:", error); } }; reader.readAsText(file); e.target.value = null; });
+            const linkActivityBtn = document.getElementById('link-activity-btn'); const activityModalList = document.getElementById('activity-link-list'); const activitySearch = document.getElementById('activity-search'); const gradeFilter = document.getElementById('activity-grade-filter'); const unitFilter = document.getElementById('activity-unit-filter'); const createLinkBtn = document.getElementById('create-link-activity-btn');
+            linkActivityBtn.addEventListener('click', () => { populateGradeFilter(); updateUnitFilter(); updateActivityLinkList(); openModal('activity'); });
+            createLinkBtn.addEventListener('click', () => { const nameInput = document.getElementById('new-activity-name-modal'); const name = nameInput.value.trim(); const grade = gradeFilter.value; const unit = unitFilter.value; if (name && grade && unit) { const newActivityId = generateDeterministicId(`g${grade}`, unit, name); if(activityLookup[newActivityId]) { alert("An activity with this name already exists in this grade and unit."); return; } const newActivity = { id: newActivityId, name, grade, unit, isCustom: true }; activityLookup[newActivityId] = newActivity; if (!documentState.customActivities) { documentState.customActivities = []; } documentState.customActivities.push(newActivity); if (!documentState.linkedActivityIds.includes(newActivityId)) { documentState.linkedActivityIds.push(newActivityId); } nameInput.value = ''; updateActivityLinkList(); } });
+            function populateGradeFilter() { gradeFilter.innerHTML = '<option value="">Select Grade</option>'; const grades = Object.keys(manifest.grades || {}).sort((a,b) => parseInt(a)-parseInt(b)); [...new Set(['6','7','8','9','10','11','12', ...grades])].forEach(g => gradeFilter.innerHTML += `<option value="${g}">Grade ${g}</option>`); }
+            function updateUnitFilter() { const grade = gradeFilter.value; unitFilter.innerHTML = '<option value="">Select Unit</option>'; if (grade && manifest.grades && manifest.grades[grade]) { Object.keys(manifest.grades[grade].units).forEach(u => unitFilter.innerHTML += `<option value="${u}">${u}</option>`); unitFilter.disabled = false; } else { unitFilter.disabled = true; } createLinkBtn.disabled = !(grade && unitFilter.value); }
+            function updateActivityLinkList() { const grade = gradeFilter.value; const unit = unitFilter.value; const filter = activitySearch.value.toLowerCase(); activityModalList.innerHTML = ''; createLinkBtn.disabled = !(grade && unit); if (!grade || !unit) { activityModalList.innerHTML = '<li>Please select a grade and unit to see activities.</li>'; return; } const activities = Object.values(activityLookup).filter(act => act.grade == grade && act.unit == unit && act.name.toLowerCase().includes(filter)); if (activities.length === 0) { activityModalList.innerHTML = '<li>No activities found for this selection.</li>'; return; } activities.forEach(act => { const isChecked = documentState.linkedActivityIds.includes(act.id); const li = document.createElement('li'); li.innerHTML = `<label class="checkbox-group"><input type="checkbox" value="${act.id}" ${isChecked ? 'checked' : ''}>${act.name}</label>`; activityModalList.appendChild(li); }); }
+            gradeFilter.addEventListener('change', () => { updateUnitFilter(); updateActivityLinkList(); });
+            unitFilter.addEventListener('change', updateActivityLinkList);
+            activitySearch.addEventListener('input', updateActivityLinkList);
+            document.getElementById('save-link-activity-btn').addEventListener('click', () => { const checkedIds = Array.from(activityModalList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value); documentState.linkedActivityIds = checkedIds; closeModal('activity'); fullRender(); });
+            document.getElementById('cancel-link-activity-btn').addEventListener('click', () => closeModal('activity'));
+            document.body.addEventListener('click', (e) => { const header = e.target.closest('.collapsible-header'); if (header) { e.preventDefault(); header.parentElement.classList.toggle('open'); } });
+            function renderMetadataModal(filter = '') { const { type, target } = currentMetadataContext; if (!target) return; document.getElementById('metadata-modal-title').textContent = `Associate Metadata - ${type === 'document' ? 'Document' : 'Atom'}`; const associatedList = document.getElementById('associated-metadata-list'); const availableList = document.getElementById('available-associations-list'); associatedList.innerHTML = ''; availableList.innerHTML = ''; const masterFields = METADATA_FIELDS[type]; const associatedKeys = target.metadata.map(m => m.key); target.metadata.forEach(metaItem => { if (!filter || metaItem.key.toLowerCase().includes(filter.toLowerCase())) { const fieldDef = masterFields.find(f => f.key === metaItem.key); let inputHtml = ''; switch(fieldDef.type) { case 'textarea': inputHtml = `<textarea data-key="${metaItem.key}" class="metadata-value-input">${metaItem.value}</textarea>`; break; case 'multiselect-genre': const genres = Array.isArray(metaItem.value) ? metaItem.value : []; const tagsHtml = genres.map(g => `<span class="genre-tag">${g}</span>`).join(''); inputHtml = `<div class="genre-tags">${tagsHtml || '<span style="color:#999;font-size:0.9em;">None selected</span>'}</div><button class="select-genres-btn" data-key="${metaItem.key}">Select Genres...</button>`; break; default: inputHtml = `<input type="${fieldDef.type}" value="${metaItem.value}" data-key="${metaItem.key}" class="metadata-value-input">`; } associatedList.innerHTML += `<div class="form-group"><label>${metaItem.key}</label>${inputHtml}</div>`; } }); masterFields.forEach(field => { if (!associatedKeys.includes(field.key)) { availableList.innerHTML += `<label><input type="checkbox" class="available-association-cb" value="${field.key}"> ${field.key}</label>`; } }); }
+            function renderGenreSelectionModal() { const listEl = document.getElementById('genre-selection-list'); listEl.innerHTML = ''; const genreMeta = currentMetadataContext.target.metadata.find(m => m.key === 'Genre'); const selectedGenres = Array.isArray(genreMeta.value) ? genreMeta.value : []; MOCK_GENRES.forEach(genre => { listEl.innerHTML += `<label><input type="checkbox" value="${genre}" ${selectedGenres.includes(genre) ? 'checked' : ''}> ${genre}</label>`; }); }
+            function renderTemplatesTab() { const container = document.getElementById('metadata-tab-templates'); container.innerHTML = ''; const { type } = currentMetadataContext; const templates = METADATA_TEMPLATES[type] || []; if (templates.length === 0) { container.innerHTML = '<p>No templates available for this context.</p>'; return; } templates.forEach(template => { const fieldsHtml = template.fields.map(f => `<li><label class="checkbox-group"><input type="checkbox" class="template-field-cb" value="${f}"> ${f}</label></li>`).join(''); container.innerHTML += `<div class="template-card" data-template-name="${template.name}"><h5><label class="checkbox-group"><input type="checkbox" class="template-select-all"> ${template.name}</label></h5><ul class="template-fields-list">${fieldsHtml}</ul></div>`; }); container.innerHTML += `<button id="add-metadata-from-template-btn" style="margin-top: 1rem;">Add Metadata</button>`;}
+            document.getElementById('edit-doc-metadata-btn').addEventListener('click', () => { currentMetadataContext = { type: 'document', target: documentState }; renderMetadataModal(); renderTemplatesTab(); openModal('metadata'); });
+            document.getElementById('add-selected-associations-btn').addEventListener('click', () => { const { target } = currentMetadataContext; const checkedBoxes = document.querySelectorAll('#available-associations-list input:checked'); checkedBoxes.forEach(cb => { if (!target.metadata.some(m => m.key === cb.value)) { const fieldDef = METADATA_FIELDS[currentMetadataContext.type].find(f => f.key === cb.value); const defaultValue = fieldDef.type === 'multiselect-genre' ? [] : ''; target.metadata.push({ key: cb.value, value: defaultValue }); } }); renderMetadataModal(); });
+            document.getElementById('cancel-genre-btn').addEventListener('click', () => closeModal('genre'));
+            document.getElementById('save-genre-btn').addEventListener('click', () => { const { target } = currentMetadataContext; const genreMeta = target.metadata.find(m => m.key === 'Genre'); const checkedGenres = Array.from(document.querySelectorAll('#genre-selection-list input:checked')).map(cb => cb.value); if (genreMeta) genreMeta.value = checkedGenres; closeModal('genre'); renderMetadataModal(); });
+            const metadataModal = document.getElementById('metadata-modal-container');
+            metadataModal.addEventListener('click', e => { if (e.target.classList.contains('select-genres-btn')) { renderGenreSelectionModal(); openModal('genre'); } else if (e.target.id === 'add-metadata-from-template-btn') { const { target } = currentMetadataContext; const checkedBoxes = metadataModal.querySelectorAll('.template-field-cb:checked'); checkedBoxes.forEach(cb => { if (!target.metadata.some(m => m.key === cb.value)) { const fieldDef = METADATA_FIELDS[currentMetadataContext.type].find(f => f.key === cb.value); const defaultValue = fieldDef.type === 'multiselect-genre' ? [] : ''; target.metadata.push({ key: cb.value, value: defaultValue }); } }); renderMetadataModal(); metadataModal.querySelector('.modal-tab-btn[data-tab="search"]').click(); } else if (e.target.classList.contains('modal-tab-btn')) { metadataModal.querySelectorAll('.modal-tab-btn, .modal-tab-content').forEach(el => el.classList.remove('active')); e.target.classList.add('active'); document.getElementById(`metadata-tab-${e.target.dataset.tab}`).classList.add('active'); } else if (e.target.classList.contains('template-select-all')) { const card = e.target.closest('.template-card'); card.querySelectorAll('.template-field-cb').forEach(cb => cb.checked = e.target.checked); } });
+            metadataModal.addEventListener('input', e => { if (e.target.classList.contains('metadata-value-input')) { const { target } = currentMetadataContext; const metaItem = target.metadata.find(m => m.key === e.target.dataset.key); if (metaItem) metaItem.value = e.target.value; if (metaItem.key === 'Title') { fullRender(); } } });
+            document.getElementById('metadata-search').addEventListener('input', e => renderMetadataModal(e.target.value));
+            document.getElementById('save-metadata-btn').addEventListener('click', () => { closeModal('metadata'); fullRender(); });
+            function renderGlossaryModal() { const { entry } = currentGlossaryContext; if (!entry) return; if (!entry.definitions || entry.definitions.length === 0) { entry.definitions = [{ partOfSpeech: 'noun', definitionText: '', displayRules: [{ activityId: '', supportLevel: [...documentState.availableSupportLevels] }] }]; } document.getElementById('glossary-term-text').value = entry.termText; const listEl = document.getElementById('definitions-list'); listEl.innerHTML = ''; const linkedActivities = documentState.linkedActivityIds.map(id => activityLookup[id]).filter(Boolean); entry.definitions.forEach((def, index) => { if (!def.displayRules || def.displayRules.length === 0) { def.displayRules = [{ activityId: '', supportLevel: [...documentState.availableSupportLevels] }]; } const rule = def.displayRules[0]; const activitySelectOptions = `<option value="">Any Linked Activity</option>` + linkedActivities.map(act => `<option value="${act.id}" ${rule.activityId === act.id ? 'selected' : ''}>${act.name}</option>`).join(''); const supportCheckboxes = documentState.availableSupportLevels.map(level => `<label class="checkbox-group" style="font-weight: normal;"><input type="checkbox" class="glossary-rule-input-checkbox" data-level="${level}" ${(rule.supportLevel || []).includes(level) ? 'checked' : ''}> ${level.replace(/-/g, ' ')}</label>`).join(''); const posOptions = PARTS_OF_SPEECH.map(pos => `<option value="${pos}" ${def.partOfSpeech === pos ? 'selected' : ''}>${pos.charAt(0).toUpperCase() + pos.slice(1)}</option>`).join(''); const cardHtml = ` <div class="definition-card" data-def-index="${index}"> <div class="rule-card-header"> <span class="title">Definition ${index + 1}</span> <div class="actions"> <button class="icon-btn delete-definition-btn delete" title="Delete Definition"> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg> </button> </div> </div> <div class="form-group"> <label>Part of Speech</label> <select class="glossary-input" data-property="partOfSpeech">${posOptions}</select> </div> <div class="form-group"> <label>Definition</label> <textarea class="glossary-input" data-property="definitionText">${def.definitionText || ''}</textarea> </div> <div class="collapsible-section open"> <div class="collapsible-header"> <h5>Display Criteria</h5> <svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg> </div> <div class="collapsible-content"> <div class="form-group"> <label>Activity</label> <select class="glossary-rule-input" data-property="activityId">${activitySelectOptions}</select> </div> <div class="form-group"> <label>Support Level(s)</label> <div class="support-level-options">${supportCheckboxes}</div> </div> </div> </div> </div>`; listEl.innerHTML += cardHtml; }); }
+            const glossaryModalContainer = document.getElementById('glossary-modal-container');
+            glossaryModalContainer.addEventListener('click', e => { const addBtn = e.target.closest('#add-definition-btn'); const removeBtn = e.target.closest('.delete-definition-btn'); if (addBtn) { currentGlossaryContext.entry.definitions.push({ partOfSpeech: 'noun', definitionText: '', displayRules: [{ activityId: '', supportLevel: [...documentState.availableSupportLevels] }] }); renderGlossaryModal(); } else if (removeBtn) { const card = removeBtn.closest('.definition-card'); const index = parseInt(card.dataset.defIndex, 10); currentGlossaryContext.entry.definitions.splice(index, 1); renderGlossaryModal(); } });
+            document.getElementById('save-glossary-btn').addEventListener('click', () => { const atom = documentState.atoms.find(a => a.id === currentGlossaryContext.atomId); if (!atom) return; const { entry } = currentGlossaryContext; const newDefinitions = []; const defCards = document.querySelectorAll('#definitions-list .definition-card'); defCards.forEach(card => { const supportLevels = Array.from(card.querySelectorAll('.glossary-rule-input-checkbox:checked')).map(cb => cb.dataset.level); newDefinitions.push({ partOfSpeech: card.querySelector('[data-property="partOfSpeech"]').value, definitionText: card.querySelector('[data-property="definitionText"]').value, displayRules: [{ activityId: card.querySelector('[data-property="activityId"]').value, supportLevel: supportLevels }] }); }); entry.definitions = newDefinitions; if (!atom.glossaryEntries) { atom.glossaryEntries = []; } const existingIndex = atom.glossaryEntries.findIndex(ge => ge.id === entry.id); if (existingIndex > -1) { atom.glossaryEntries[existingIndex] = entry; } else { atom.glossaryEntries.push(entry); } closeModal('glossary'); fullRender(); });
+            document.getElementById('cancel-glossary-btn').addEventListener('click', () => closeModal('glossary'));
+            const canvas = document.getElementById('canvas');
+            function getDragAfterElement(container, y) { const draggableElements = [...container.querySelectorAll('.atom:not(.dragging)')]; return draggableElements.reduce((closest, child) => { const box = child.getBoundingClientRect(); const offset = y - box.top - box.height / 2; if (offset < 0 && offset > closest.offset) { return { offset: offset, element: child }; } else { return closest; } }, { offset: Number.NEGATIVE_INFINITY }).element; }
+            canvas.addEventListener('dragstart', e => { if (e.target.classList.contains('atom')) { e.target.classList.add('dragging'); e.dataTransfer.setData('text/plain', e.target.dataset.atomId); e.dataTransfer.effectAllowed = 'move'; } });
+            canvas.addEventListener('dragend', e => { if (e.target.classList.contains('atom')) { e.target.classList.remove('dragging'); const indicator = canvas.querySelector('.drop-indicator'); if (indicator) indicator.style.display = 'none'; } });
+            canvas.addEventListener('dragover', e => { e.preventDefault(); const indicator = canvas.querySelector('.drop-indicator'); const afterElement = getDragAfterElement(canvas, e.clientY); if (indicator) { indicator.style.display = 'block'; if (afterElement) { indicator.style.top = `${afterElement.offsetTop - 8}px`; } else { const lastElement = canvas.querySelector('.atom:last-of-type:not(.dragging)'); if (lastElement) { indicator.style.top = `${lastElement.offsetTop + lastElement.offsetHeight}px`; } else { indicator.style.top = `24px`; } } } });
+            canvas.addEventListener('drop', e => { e.preventDefault(); const draggedAtomId = e.dataTransfer.getData('text/plain'); if (!draggedAtomId) return; const afterElement = getDragAfterElement(canvas, e.clientY); const afterAtomId = afterElement ? afterElement.dataset.atomId : null; const draggedAtomIndex = documentState.atoms.findIndex(a => a.id === draggedAtomId); if (draggedAtomIndex === -1) return; const [draggedAtom] = documentState.atoms.splice(draggedAtomIndex, 1); if (afterAtomId) { const dropIndex = documentState.atoms.findIndex(a => a.id === afterAtomId); documentState.atoms.splice(dropIndex, 0, draggedAtom); } else { documentState.atoms.push(draggedAtom); } fullRender(); });
+            async function initialize() { try { const response = await fetch('lenses_manifest.json'); if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`); manifest = await response.json(); } catch (error) { console.error("Could not load manifest.json for Lenses. Using an empty manifest.", error); manifest = { grades: {} }; } processManifest(); fullRender(); }
+            function processManifest() { activityLookup = {}; if (!manifest.grades) return; for (const grade in manifest.grades) { if (!manifest.grades[grade].units) continue; for (const unit in manifest.grades[grade].units) { if (!Array.isArray(manifest.grades[grade].units[unit].activities)) continue; manifest.grades[grade].units[unit].activities.forEach(activityName => { const id = generateDeterministicId(`g${grade}`, unit, activityName); activityLookup[id] = { id, name: activityName, grade, unit }; }); } } }
+            initialize();
+        }
+
+        // --- CLEARMATH APP LOGIC ---
+        function initializeClearMathApp() {
+             const APP_VERSION = "rc1.beta.0.23"; // Using the same main version for the shell
+            document.getElementById('version-display').textContent = APP_VERSION;
+
+            let currentTigData = null; let currentSrbData = null; let manifestData = []; let activeEditor = null;
+            let srbViewMode = 'editor'; let tigViewMode = 'editor';
+            let currentLessonInfo = null;
+            const mainContent = document.querySelector('.cleareditor-main-content');
+            const courseSelector = document.getElementById('course-selector');
+            const lessonSelector = document.getElementById('lesson-selector');
+            const saveButton = document.getElementById('save-button');
+            
+            function getNestedProperty(obj, path) { return path.split(/[.\[\]]+/).filter(Boolean).reduce((res, key) => (res !== null && res !== undefined) ? res[key] : res, obj); }
+            function setNestedProperty(obj, path, value) { const keys = path.split(/[.\[\]]+/).filter(Boolean); const lastKey = keys.pop(); const lastObj = keys.reduce((res, key) => res[key] = res[key] || {}, obj); lastObj[lastKey] = value; }
+            
+            async function init() {
+                try {
+                    const response = await fetch('manifest.json');
+                    if (!response.ok) throw new Error("Manifest not found.");
+                    manifestData = await response.json();
+                    populateCourseSelector();
+                    courseSelector.addEventListener('change', handleCourseChange);
+                    lessonSelector.addEventListener('change', handleLessonChange);
+                    saveButton.addEventListener('click', saveChanges);
+                    mainContent.addEventListener('click', handleEditorEvents);
+                    mainContent.addEventListener('input', handleInputChange);
+                    await handleCourseChange();
+                } catch (error) {
+                    mainContent.innerHTML = `<div class="loader" style="color:red;">Error: ${error.message}</div>`;
+                }
+            }
+            
+            function handleEditorEvents(e) {
+                if (e.target.closest('.editable-content')) handleContentClick(e);
+                if (e.target.closest('.add-break-btn')) handleAddSlideBreak(e);
+                if (e.target.closest('.delete-break-btn')) handleDeleteSlideBreak(e);
+                if (e.target.closest('.view-toggle-btn')) handleViewToggle(e);
+            }
+
+            function handleViewToggle(e) {
+                const source = e.target.closest('.editor-column').getAttribute('data-source');
+                const view = e.target.getAttribute('data-view');
+                if (source === 'srb') srbViewMode = view;
+                else if (source === 'tig') tigViewMode = view;
+                renderSideBySideEditor();
+            }
+            
+            function handleSourceEdit(e) {
+                const source = e.target.closest('.editor-column').getAttribute('data-source');
+                const value = e.target.value;
+                try {
+                    const newData = JSON.parse(value);
+                    if (source === 'srb') currentSrbData = newData;
+                    else currentTigData = newData;
+                    e.target.classList.remove('error');
+                } catch (err) {
+                    e.target.classList.add('error');
+                }
+            }
+
+            function handleAddSlideBreak(e) {
+                const srbColumn = e.target.closest('.editor-column').querySelector('.column-content');
+                let topVisibleIndex = 0;
+                const featureElements = Array.from(srbColumn.querySelectorAll('[data-path^="lesson_content_sessions[0].features"]'));
+                if (featureElements.length > 0) {
+                    let minTop = Number.MAX_VALUE;
+                    let elementIndex = -1;
+                    for (let i = 0; i < featureElements.length; i++) {
+                        const rect = featureElements[i].getBoundingClientRect();
+                        if (rect.top >= srbColumn.getBoundingClientRect().top && rect.top < minTop) {
+                            minTop = rect.top;
+                            elementIndex = i;
+                        }
+                    }
+                    if (elementIndex !== -1) {
+                        const path = featureElements[elementIndex].getAttribute('data-path');
+                        topVisibleIndex = parseInt((path.match(/\[(\d+)\]$/) || [])[1], 10);
+                    }
+                }
+                const newBreak = { uuid: `slide-break-${new Date().getTime()}`, feature_type: "slide_break", feature_title: "Slide Break", feature_data: { data_type: "slide_break" } };
+                currentSrbData.lesson_content_sessions[0].features.splice(topVisibleIndex + 1, 0, newBreak);
+                renderSideBySideEditor();
+            }
+
+            function handleDeleteSlideBreak(e) {
+                const path = e.target.getAttribute('data-path');
+                if (!path) return;
+                const pathParts = path.match(/\[(\d+)\]/g);
+                if (pathParts && pathParts.length) {
+                    const index = parseInt(pathParts[pathParts.length - 1].replace(/[\[\]]/g, ''), 10);
+                    currentSrbData.lesson_content_sessions[0].features.splice(index, 1);
+                    renderSideBySideEditor();
+                }
+            }
+            
+            function populateCourseSelector() { manifestData.forEach(course => courseSelector.add(new Option(course.courseName, course.courseName))); }
+            function populateLessonSelector(courseName) { 
+                lessonSelector.innerHTML = ''; 
+                const course = manifestData.find(c => c.courseName === courseName); 
+                if (course && course.lessons.length > 0) { 
+                    lessonSelector.disabled = false; 
+                    course.lessons.forEach(lesson => lessonSelector.add(new Option(lesson.name, lesson.name)));
+                } else { 
+                    lessonSelector.disabled = true; 
+                    lessonSelector.add(new Option('No lessons available', '')); 
+                } 
+            }
+            async function handleCourseChange() { populateLessonSelector(courseSelector.value); await handleLessonChange(); }
+            async function handleLessonChange() {
+                const lessonName = lessonSelector.value;
+                if (!lessonName) {
+                    mainContent.innerHTML = `<div class="loader">Select a lesson to begin...</div>`;
+                    currentTigData = null; currentSrbData = null; currentLessonInfo = null;
+                    return;
+                }
+                mainContent.innerHTML = `<div class="loader">Loading lesson files...</div>`;
+                const course = manifestData.find(c => c.courseName === courseSelector.value);
+                currentLessonInfo = course.lessons.find(l => l.name === lessonName);
+                try {
+                    const [tigResponse, srbResponse] = await Promise.all([ fetch(currentLessonInfo.tig_path), fetch(currentLessonInfo.srb_path) ]);
+                    if (!tigResponse.ok) throw new Error(`Could not fetch TIG: ${currentLessonInfo.tig_path}`);
+                    if (!srbResponse.ok) throw new Error(`Could not fetch SRB: ${currentLessonInfo.srb_path}`);
+                    currentTigData = await tigResponse.json();
+                    currentSrbData = await srbResponse.json();
+                    renderSideBySideEditor();
+                } catch (error) {
+                    mainContent.innerHTML = `<div class="loader" style="color:red;">Error: ${error.message}</div>`;
+                }
+            }
+            
+            function destroyActiveEditor(saveContent = true) {
+                if (!activeEditor) return;
+                const { editor, container, path, isList, source } = activeEditor;
+                const editorId = editor.id;
+                if (saveContent) {
+                    let value;
+                    if (isList) {
+                        const tempDiv = document.createElement('div'); tempDiv.innerHTML = editor.getContent();
+                        value = Array.from(tempDiv.querySelectorAll('li')).map(li => li.innerHTML.trim());
+                    } else { value = editor.getContent(); }
+                    updateSharedData(source, path, value);
+                    syncAndRefreshViews(source, path);
+                } else {
+                    const featureCard = container.closest('.feature-card');
+                     if(featureCard) {
+                        const featurePath = featureCard.getAttribute('data-path');
+                        const feature = getNestedProperty(source === 'tig' ? currentTigData : currentSrbData, featurePath);
+                        const contentArea = featureCard.querySelector('.feature-content');
+                        if(contentArea) contentArea.innerHTML = renderFeatureContent(feature, featurePath, source);
+                    }
+                }
+                tinymce.get(editorId)?.remove();
+                activeEditor = null;
+            }
+
+            function handleContentClick(e) {
+                const target = e.target.closest('.editable-content');
+                if (!target) return;
+                if (activeEditor && activeEditor.container === target) return;
+                destroyActiveEditor(true); 
+                const path = target.getAttribute('data-path');
+                const isList = target.getAttribute('data-type') === 'list';
+                const source = target.closest('.editor-column').getAttribute('data-source');
+                const content = target.innerHTML;
+                target.innerHTML = '';
+                const textarea = document.createElement('textarea');
+                const editorId = `editor-for-${path.replace(/[.\[\]]/g, '-')}`;
+                textarea.id = editorId;
+                textarea.value = content;
+                target.appendChild(textarea);
+                const newEditorConfig = { 
+                    selector: `#${editorId}`,
+                    plugins: 'lists link image code help wordcount autoresize equationeditor',
+                    toolbar: 'undo redo | blocks | bold italic equationeditor | alignleft aligncenter alignright | bullist numlist | code | help',
+                    menubar: true, min_height: 150, autoresize_bottom_margin: 24, 
+                    external_plugins: { 'equationeditor': 'https://tinymce-equation-editor.netlify.app/equation-editor/plugin.min.js' },
+                    extended_valid_elements: 'math[*],mstyle[*],mrow[*],mi[*],mn[*],mo[*],msup[*],msub[*],mfrac[*],msqrt[*],mtable[*],mtr[*],mtd[*]',
+                    content_css: 'https://cdn.jsdelivr.net/npm/mathlive/dist/mathlive-static.css',
+                    setup: (editor) => { 
+                        editor.on('init', () => editor.focus()); 
+                        activeEditor = { editor, container: target, path, isList, source }; 
+                    } 
+                };
+                if (isList) { newEditorConfig.menubar = false; newEditorConfig.toolbar = 'undo redo | bold italic equationeditor | bullist numlist | code | help'; }
+                tinymce.init(newEditorConfig);
+            }
+            
+            function updateSharedData(source, path, value) {
+                const sourceData = source === 'tig' ? currentTigData : currentSrbData;
+                const targetData = source === 'srb' ? currentTigData : currentSrbData;
+                setNestedProperty(sourceData, path, value);
+                const pathParts = path.match(/[^.\[\]]+/g) || [];
+                const featurePath = pathParts.slice(0, 2).join('.');
+                const changedFeature = getNestedProperty(sourceData, featurePath);
+                if (!changedFeature || !changedFeature.uuid) return;
+                const findAndSync = (items, basePath) => {
+                    if(!items) return false;
+                    const targetIndex = items.findIndex(f => f && f.uuid === changedFeature.uuid);
+                    if (targetIndex !== -1) {
+                        const propertySubPath = pathParts.slice(2).join('.');
+                        const targetPath = `${basePath}[${targetIndex}].${propertySubPath}`;
+                        setNestedProperty(targetData, targetPath, value);
+                        return true;
+                    }
+                    return false;
+                };
+                if (findAndSync(targetData.lesson_overview_items, 'lesson_overview_items')) return;
+                if (targetData.lesson_content_sessions) {
+                     targetData.lesson_content_sessions.forEach((session, sIndex) => { if(findAndSync(session.features, `lesson_content_sessions[${sIndex}].features`)) return; });
+                }
+                if (targetData.lesson_support_sessions) {
+                     targetData.lesson_support_sessions.forEach((session, sIndex) => { if(findAndSync(session.support_items, `lesson_support_sessions[${sIndex}].support_items`)) return; });
+                }
+            }
+            
+            function syncAndRefreshViews(source, path) {
+                const pathParts = path.match(/[^.\[\]]+/g) || [];
+                const featurePath = pathParts.slice(0, 2).join('.');
+                const sourceFeature = getNestedProperty(source === 'tig' ? currentTigData : currentSrbData, featurePath);
+                if (!sourceFeature || !sourceFeature.uuid) return;
+                
+                const sourceCard = mainContent.querySelector(`.editor-column[data-source="${source}"] [data-uuid="${sourceFeature.uuid}"]`);
+                if (sourceCard && sourceCard.querySelector('.feature-content')) {
+                    sourceCard.querySelector('.feature-content').innerHTML = renderFeatureContent(sourceFeature, sourceCard.getAttribute('data-path'), source);
+                }
+            
+                const targetSource = source === 'tig' ? 'srb' : 'tig';
+                const targetCard = mainContent.querySelector(`.editor-column[data-source="${targetSource}"] [data-uuid="${sourceFeature.uuid}"]`);
+                if(targetCard) {
+                    const targetPath = targetCard.getAttribute('data-path');
+                    const targetFeature = getNestedProperty(targetSource === 'tig' ? currentTigData : currentSrbData, targetPath);
+                    if (targetFeature && targetCard.querySelector('.feature-content')) {
+                       targetCard.querySelector('.feature-content').innerHTML = renderFeatureContent(targetFeature, targetPath, targetSource);
+                    }
+                }
+            }
+
+            function handleInputChange(e) {
+                const target = e.target;
+                const path = target.getAttribute('data-path');
+                const source = target.closest('.editor-column').getAttribute('data-source');
+                if (path && source) {
+                    let value;
+                    if (target.type === 'checkbox') value = target.checked;
+                    else if (target.tagName === 'SELECT') value = isNaN(parseInt(target.value)) ? target.value : parseInt(target.value);
+                    else value = target.value;
+                    updateSharedData(source, path, value);
+                    syncAndRefreshViews(source, path);
+                }
+            }
+            
+            function renderSideBySideEditor() {
+                destroyActiveEditor(false);
+                mainContent.innerHTML = `
+                    <div class="editor-column" data-source="srb">
+                        <div class="column-header">
+                            <div class="srb-column-header"><span>Student View <small>(SRB)</small></span><button class="add-break-btn">Add Slide Break</button></div>
+                            <div class="column-header-controls">
+                                <button class="view-toggle-btn ${srbViewMode === 'editor' ? 'active' : ''}" data-view="editor">Editor</button>
+                                <button class="view-toggle-btn ${srbViewMode === 'source' ? 'active' : ''}" data-view="source">&lt;&gt;</button>
+                                <button class="view-toggle-btn ${srbViewMode === 'pdf' ? 'active' : ''}" data-view="pdf">PDF</button>
+                            </div>
+                        </div>
+                        <div class="column-content">${renderColumnContent('srb')}</div>
+                    </div>
+                    <div class="editor-column" data-source="tig">
+                        <div class="column-header">
+                            <span>Teacher View <small>(TIG)</small></span>
+                            <div class="column-header-controls">
+                                <button class="view-toggle-btn ${tigViewMode === 'editor' ? 'active' : ''}" data-view="editor">Editor</button>
+                                <button class="view-toggle-btn ${tigViewMode === 'source' ? 'active' : ''}" data-view="source">&lt;&gt;</button>
+                                <button class="view-toggle-btn ${tigViewMode === 'pdf' ? 'active' : ''}" data-view="pdf">PDF</button>
+                            </div>
+                        </div>
+                        <div class="column-content">${renderColumnContent('tig')}</div>
+                    </div>`;
+                initializeSortable();
+                mainContent.querySelectorAll('.source-view-textarea').forEach(area => area.addEventListener('input', handleSourceEdit));
+            }
+
+            function initializeSortable() {
+                mainContent.querySelectorAll('.sortable-list').forEach(list => {
+                    new Sortable(list, {
+                        handle: '.drag-handle',
+                        animation: 150,
+                        onEnd: (evt) => {
+                            const path = evt.from.getAttribute('data-path');
+                            const source = evt.from.closest('.editor-column').getAttribute('data-source');
+                            const data = source === 'srb' ? currentSrbData : currentTigData;
+                            const featureArray = getNestedProperty(data, path);
+                            if (Array.isArray(featureArray)) {
+                                const [movedItem] = featureArray.splice(evt.oldIndex, 1);
+                                featureArray.splice(evt.newIndex, 0, movedItem);
+                                renderSideBySideEditor();
+                            }
+                        }
+                    });
+                });
+            }
+
+            function renderColumnContent(source) {
+                const data = source === 'srb' ? currentSrbData : currentTigData;
+                const mode = source === 'srb' ? srbViewMode : tigViewMode;
+
+                if (mode === 'source') {
+                    return `<textarea class="source-view-textarea">${JSON.stringify(data, null, 2)}</textarea>`;
+                }
+                if (mode === 'pdf') {
+                    if (!currentLessonInfo) return '<p class="content-placeholder">Lesson info not loaded.</p>';
+                    const pdfPath = source === 'srb' ? currentLessonInfo.srb_pdf_path : currentLessonInfo.tig_pdf_path;
+                    return `<iframe class="pdf-view-iframe" src="${pdfPath}"></iframe>`;
+                }
+                
+                if (!data) return '<div class="loader">Data not loaded.</div>';
+                let overviewHtml = renderSection("Lesson Overview", data.lesson_overview_items, `lesson_overview_items`, source, true);
+                let mainContentHtml = '';
+                if (source === 'srb' && data.lesson_content_sessions) { mainContentHtml = renderSection("Lesson Content", data.lesson_content_sessions[0].features, `lesson_content_sessions[0].features`, source, true); }
+                else if (source === 'tig' && data.lesson_support_sessions) {
+                    (data.lesson_support_sessions || []).forEach((session, sIndex) => {
+                        mainContentHtml += `<h2 class="section-header">Lesson Support: Session ${session.session}</h2>`;
+                        const allSrbItems = (currentSrbData.lesson_overview_items || []).concat(currentSrbData.lesson_content_sessions[0]?.features || []);
+                        const srbBreakUUIDs = new Set((allSrbItems.filter(f => f.feature_type === 'slide_break')).map(b => b.uuid));
+                        
+                        const combinedItems = [ ...session.support_items ];
+                        let srbPointer = 0;
+                        for(let i=0; i<combinedItems.length; i++){
+                            const tigItem = combinedItems[i];
+                            if(tigItem.linked_student_uuid){
+                                while(srbPointer < allSrbItems.length && allSrbItems[srbPointer].uuid !== tigItem.linked_student_uuid){
+                                    if(srbBreakUUIDs.has(allSrbItems[srbPointer].uuid)){
+                                        combinedItems.splice(i, 0, allSrbItems[srbPointer]);
+                                        i++;
+                                    }
+                                    srbPointer++;
+                                }
+                            }
+                        }
+                        
+                        const blocks = combinedItems.reduce((acc, item) => { const blockName = item.block || 'General'; if (!acc[blockName]) acc[blockName] = []; acc[blockName].push(item); return acc; }, {});
+                        const blockOrder = ['Activate', 'Explore and Develop', 'Reflect', 'General'];
+                        blockOrder.forEach(blockName => {
+                            if (blocks[blockName]) {
+                                mainContentHtml += `<div class="block-group"><div class="block-group-header">${blockName}</div><div class="block-group-content">`;
+                                blocks[blockName].forEach(feature => { 
+                                    let path = `slide_break_${feature.uuid}`;
+                                    if (feature.feature_type !== 'slide_break') {
+                                        const originalIndex = session.support_items.indexOf(feature);
+                                        path = `lesson_support_sessions[${sIndex}].support_items[${originalIndex}]`;
+                                    }
+                                    mainContentHtml += renderFeature(feature, path, source); 
+                                });
+                                mainContentHtml += `</div></div>`;
+                            }
+                        });
+                    });
+                }
+                return overviewHtml + mainContentHtml;
+            }
+
+            function renderFeature(feature, path, source) {
+                if (!feature || !feature.feature_data) return ''; 
+                if (feature.feature_type === 'slide_break') {
+                    if (source === 'srb') {
+                        return `<div class="slide-break-feature" data-path="${path}" data-uuid="${feature.uuid}">
+                                    <span class="drag-handle">☰</span>
+                                    <span>SLIDE BREAK</span>
+                                    <button class="delete-break-btn" data-path="${path}" title="Delete Slide Break">X</button>
+                                </div>`;
+                    } else { return `<div class="slide-break-indicator" data-uuid="${feature.uuid}"></div>`; }
+                }
+                if (feature.feature_data.data_type === 'static_header') {
+                     return `<div class="static-header-card" data-path="${path}" data-uuid="${feature.uuid}">
+                                ${feature.feature_title}
+                                ${feature.feature_data.mode ? `<span class="feature-type-badge">${feature.feature_data.mode}</span>` : ''}
+                            </div>`;
+                }
+                if (feature.feature_data.data_type === 'activity_header') {
+                    let activityNumberHtml = '';
+                    if (feature.feature_data.hasOwnProperty('activity_number')) {
+                        let selectHtml = `<select data-path="${path}.feature_data.activity_number">`;
+                        for(let i=1; i<=8; i++) { selectHtml += `<option value="${i}" ${feature.feature_data.activity_number === i ? 'selected' : ''}>${i}</option>`; }
+                        selectHtml += `</select>`;
+                        activityNumberHtml = `Activity ${selectHtml}`;
+                    }
+                    return `<div class="static-header-card" data-path="${path}" data-uuid="${feature.uuid}">${activityNumberHtml} <input type="text" value="${feature.feature_title}" data-path="${path}.feature_title"/></div>`;
+                }
+                
+                const contentHtml = renderFeatureContent(feature, path, source);
+                return `<div class="feature-card" data-path="${path}" data-uuid="${feature.uuid}">
+                            <div class="feature-header"><h3>${feature.feature_title}</h3><span class="feature-type-badge">${feature.feature_type}</span></div>
+                            ${contentHtml ? `<div class="feature-content">${contentHtml}</div>` : ''}
+                        </div>`;
+            }
+
+            function renderFeatureContent(feature, path, source) {
+               const data = source === 'srb' ? currentSrbData : currentTigData;
+               const dataType = feature.feature_data.data_type;
+               const createEditableDiv = (contentPath, isList = false, listTag = 'ul') => {
+                   let content = getNestedProperty(data, contentPath);
+                   if (isList) { content = `<${listTag}>${(content || []).map(item => `<li>${item}</li>`).join('')}</${listTag}>`; }
+                   return `<div class="editable-content" data-path="${contentPath}" data-type="${isList ? 'list' : 'single'}">${content || ''}</div>`;
+               };
+               
+               switch (dataType) {
+                    case 'list': 
+                    case 'rich_text_list':
+                        return createEditableDiv(path + '.feature_data.items', true, (feature.feature_data.is_numbered ? 'ol' : 'ul'));
+                    
+                    case 'rich_text':
+                        if (feature.feature_type === 'learning_prompt') {
+                            const question = getNestedProperty(data, path + '.feature_data.prompt_question');
+                            const answer = getNestedProperty(data, path + '.feature_data.prompt_answer');
+                            if (source === 'tig') {
+                                return `<div class="form-field"><label>Prompt Question (from SRB)</label><div class="read-only-content">${question || ''}</div></div>
+                                        <div class="form-field"><label>Prompt Answer</label>${createEditableDiv(path + '.feature_data.prompt_answer')}</div>`;
+                            } else {
+                                return `<div class="form-field"><label>Prompt Question</label>${createEditableDiv(path + '.feature_data.prompt_question')}</div>
+                                        <div class="form-field"><label>Teacher's Answer (Read-only)</label><div class="read-only-content">${answer || ''}</div></div>`;
+                            }
+                        } else { return createEditableDiv(path + '.feature_data.content'); }
+
+                    case 'prompt': 
+                        return `<div class="form-field"><label>Title</label><input type="text" value="${feature.feature_data.title || ''}" data-path="${path}.feature_data.title" /></div>
+                                <div class="form-field"><label>Text</label>${createEditableDiv(path + '.feature_data.text')}</div>`;
+                    
+                    case 'qti_assessment_item':
+                        const itemData = feature.feature_data;
+                        let html = `<div class="form-field"><label>Item Stem</label>${createEditableDiv(path + '.feature_data.item_body.stem')}</div>`;
+                        (itemData.item_body.interactions || []).forEach((interaction, i) => {
+                            const respDeclIndex = (itemData.response_declarations || []).findIndex(rd => rd.identifier === interaction.response_identifier);
+                            if (respDeclIndex > -1) {
+                                const respDecl = itemData.response_declarations[respDeclIndex];
+                                const isSample = respDecl.is_sample_answer === true;
+                                html += `<div class="qti-interaction">
+                                            <div class="form-field"><label>Interaction Prompt</label><input type="text" value="${interaction.prompt}" data-path="${path}.feature_data.item_body.interactions[${i}].prompt" /></div>
+                                            <div class="form-field qti-answer">
+                                                <div class="answer-header">
+                                                    <label>Correct Response</label>
+                                                    <div class="sample-answer-toggle">
+                                                        <label for="sample-toggle-${path}-${i}">Sample Answer?</label>
+                                                        <input type="checkbox" id="sample-toggle-${path}-${i}" data-path="${path}.feature_data.response_declarations[${respDeclIndex}].is_sample_answer" ${isSample ? 'checked' : ''} />
+                                                    </div>
+                                                </div>
+                                                ${createEditableDiv(`${path}.feature_data.response_declarations[${respDeclIndex}].correct_response`)}
+                                            </div>
+                                        </div>`;
+                            }
+                        });
+                        if (itemData.ancillary_content) {
+                            if (itemData.ancillary_content.think_about) { html += `<div class="form-field"><label>Think About</label>${createEditableDiv(`${path}.feature_data.ancillary_content.think_about`)}</div>`; }
+                            if (itemData.ancillary_content.ask_yourself) { html += `<div class="form-field"><label>Ask Yourself</label>${createEditableDiv(`${path}.feature_data.ancillary_content.ask_yourself`)}</div>`; }
+                            if (itemData.ancillary_content.graphic) { const graphic = itemData.ancillary_content.graphic; html += `<div class="form-field"><label>Graphic</label><div class="graphic-placeholder"><strong>Image ID:</strong> ${graphic.image_id}<br><strong>Alt Text:</strong> ${graphic.alt_text}</div></div>`; }
+                        }
+                        return html;
+
+                    case 'problem': 
+                         const probData = feature.feature_data;
+                         let probHtml = `<div class="form-field"><label>Content</label>${createEditableDiv(`${path}.feature_data.content`)}</div>`;
+                         if (probData.answer) {
+                             const isSampleAnswer = probData.answer.is_sample_answer === true;
+                             probHtml += `<div class="form-field" style="border-left: 4px solid magenta; padding-left: 1rem;">
+                                            <div class="answer-header">
+                                                <label>Answer</label>
+                                                ${ 'is_sample_answer' in probData.answer ? `<div class="sample-answer-toggle">
+                                                    <label for="sample-toggle-${path}">Sample Answer?</label>
+                                                    <input type="checkbox" id="sample-toggle-${path}" data-path="${path}.feature_data.answer.is_sample_answer" ${isSampleAnswer ? 'checked' : ''} />
+                                                </div>` : ''}
+                                            </div>
+                                            ${createEditableDiv(`${path}.feature_data.answer.content`)}
+                                        </div>`;
+                         }
+                         return probHtml;
+
+                    case 'session_list': 
+                        let tableHtml = `<table><thead><tr><th>Session</th><th>Block</th><th>Title</th><th>Strategies</th><th>Duration</th><th>Mode</th></tr></thead><tbody>`; 
+                        tableHtml += (feature.feature_data.items || []).map(item => `<tr><td>${item.session}</td><td>${item.block}</td><td>${item.title}</td><td>${(item.instructional_strategies || []).join(', ')}</td><td>${item.duration_minutes} min</td><td>${item.mode}</td></tr>`).join(''); 
+                        return tableHtml += `</tbody></table>`;
+                    
+                    case 'intro_with_list':
+                        const introListTag = feature.feature_data.is_numbered ? 'ol' : 'ul'; 
+                        return `<div class="form-field"><label>Introduction</label>${createEditableDiv(`${path}.feature_data.introduction`)}</div><div class="form-field"><label>Items</label>${createEditableDiv(`${path}.feature_data.items`, true, introListTag)}</div>`;
+                    
+                    case 'intro_with_structured_list': 
+                        return `<div class="form-field"><label>Introduction</label>${createEditableDiv(`${path}.feature_data.introduction`)}</div><label>Items</label>${(feature.feature_data.items || []).map((item, i) => `<div class="structured-list-item"><div class="form-field"><label>Title</label><input type="text" value="${item.title}" data-path="${path}.feature_data.items[${i}].title" /></div><div class="form-field"><label>Description</label><textarea rows="3" data-path="${path}.feature_data.items[${i}].description">${item.description}</textarea></div></div>`).join('')}`;
+
+                    case 'detailed_activity_facilitation': 
+                        const facData = feature.feature_data; let promptHtml = ''; 
+                        const modeOptions = ['presentation', 'book', 'group_work', 'independent'];
+                        let modeDropdown = `<select data-path="${path}.feature_data.mode">`;
+                        modeOptions.forEach(opt => { modeDropdown += `<option value="${opt}" ${facData.mode === opt ? 'selected' : ''}>${opt}</option>`; });
+                        modeDropdown += `</select>`;
+                        if (facData.activate_prompt) {
+                            promptHtml = `<div class="structured-list-item">
+                                            <div class="form-field"><label>Activate Prompt Title (from SRB)</label><div class="read-only-content">${facData.activate_prompt.title}</div></div>
+                                            <div class="form-field"><label>Activate Prompt Text (from SRB)</label><div class="read-only-content">${facData.activate_prompt.prompt_text}</div></div>
+                                        </div>`;
+                        } 
+                        return `<div class="form-field"><label>Purpose</label><input type="text" value="${facData.purpose || ''}" data-path="${path}.feature_data.purpose" /></div>
+                                <div class="form-field"><label>Mode</label>${modeDropdown}</div>
+                                ${promptHtml}
+                                <div class="form-field"><label>Steps</label>${createEditableDiv(`${path}.feature_data.steps`, true, 'ul')}</div>`;
+                    
+                    case 'differentiation_strategy': 
+                        return `<div class="form-field"><label>Title</label><input type="text" value="${feature.feature_data.title || ''}" data-path="${path}.feature_data.title" /></div><div class="form-field"><label>Text</label>${createEditableDiv(`${path}.feature_data.text`)}</div>`;
+                    
+                    case 'ongoing_assessment': 
+                        const assessData = feature.feature_data;
+                        return `<div class="form-field"><label>Introduction</label><input type="text" value="${assessData.introduction_text || ''}" data-path="${path}.feature_data.introduction_text" /></div><div class="form-field"><label>Questions</label>${createEditableDiv(`${path}.feature_data.questions`, true, 'ul')}</div><div class="form-field"><label>Notes</label>${createEditableDiv(`${path}.feature_data.notes`)}</div>`;
+                    
+                    case 'question_set_list': 
+                        return (feature.feature_data.items || []).map((item, i) => `<div class="structured-list-item"><div class="form-field"><label>Student Page #</label><input type="text" value="${item.student_page_number}" data-path="${path}.feature_data.items[${i}].student_page_number" /></div><div class="form-field"><label>Item #s</label>${createEditableDiv(`${path}.feature_data.items[${i}].item_numbers`)}</div><div class="form-field"><label>Question Type</label><input type="text" value="${item.question_type}" data-path="${path}.feature_data.items[${i}].question_type" /></div><div class="form-field"><label>Questions</label>${createEditableDiv(`${path}.feature_data.items[${i}].questions`, true, 'ul')}</div></div>`).join('');
+                    
+                    default: return ``;
+               }
+            }
+
+            function saveChanges() { console.log("SRB Data:", JSON.stringify(currentSrbData, null, 2)); console.log("TIG Data:", JSON.stringify(currentTigData, null, 2)); alert("Data for both files saved to console."); }
+            
+            init();
+        }
+    </script>
+</body>
+</html>
