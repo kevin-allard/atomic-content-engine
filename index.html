@@ -135,12 +135,16 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: background-color 0.2s;
         }
         .collapsible-panel-handle:hover {
             background-color: rgba(0,0,0,0.05);
         }
         .panel.collapsed .panel-content, .panel.collapsed .panel-footer {
             display: none;
+        }
+        .panel.collapsed {
+            cursor: pointer;
         }
         .panel.collapsed .panel-header {
             writing-mode: vertical-rl;
@@ -150,9 +154,20 @@
             height: 100%;
             border-bottom: none;
             border-left: 1px solid var(--border-color);
+            padding: 16px 8px;
+            width: 40px;
         }
-        .panel.collapsed .collapsible-panel-handle {
-             transform: rotate(-90deg);
+        .panel.collapsed .panel-header > span:first-child {
+            max-height: calc(100% - 30px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #document-panel.collapsed .collapsible-panel-handle {
+             transform: rotate(180deg);
+        }
+        #properties-panel.collapsed .collapsible-panel-handle {
+             transform: rotate(180deg);
         }
         
         #canvas { padding: 24px; }
@@ -214,7 +229,7 @@
         #preview-canvas .atom { border: 2px solid transparent !important; cursor: default; }
         #preview-canvas .atom:hover { border-color: transparent !important; }
         .view-toggle-container { display: flex; align-items: center; gap: 8px; }
-        .view-toggle-btn { background: none; border: 1px solid var(--border-color); padding: 6px 12px; font-size: 13px; font-weight: 500; border-radius: 16px; cursor: pointer; }
+        .view-toggle-btn { background: none; border: 1px solid var(--border-color); padding: 6px 12px; font-size: 13px; font-weight: 500; border-radius: 16px; cursor: pointer; transition: all 0.2s ease; }
         .view-toggle-btn.active { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
         .collapsible-section { border-bottom: 1px solid var(--border-color); margin-bottom: 16px; padding-bottom: 16px; }
         .collapsible-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 4px 0; }
@@ -277,7 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let canvasMode = 'author'; // 'author' or 'preview'
     let previewContext = {
         activityId: '',
-        supportLevel: ''
+        supportLevel: 'core'
     };
 
     const ALL_SUPPORT_LEVELS = ['core', 'light', 'moderate', 'intensive', 'light-multilingual', 'moderate-multilingual', 'intensive-multilingual'];
@@ -305,7 +320,334 @@ document.addEventListener('DOMContentLoaded', () => {
         renderPropertiesPanel();
     }
 
-    // ... (All other render functions are defined in the full script below)
+    function renderDocPanel() {
+        // ... (Implementation for Doc Panel)
+        const title = documentState.metadata.find(m => m.key === 'Title')?.value || "Untitled Document";
+        const isCollapsed = docPanel.classList.contains('collapsed');
+
+        docPanel.innerHTML = `
+            <div class="panel-header">
+                <span title="${title}">${title}</span>
+                <span class="collapsible-panel-handle" data-panel-id="document-panel" title="Toggle Panel">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12l4.58-4.59z"/></svg>
+                </span>
+            </div>
+            <div class="panel-content">
+                <!-- Document properties will go here -->
+                <button id="open-json-btn">Open JSON File</button>
+                <button id="generate-json-btn" class="primary">Generate JSON</button>
+                 <dl class="metadata-display-list">
+                    <dt>Document ID</dt>
+                    <dd>${documentState.id}</dd>
+                    <dt>Linked Activities</dt>
+                    <dd>${documentState.linkedActivityIds.length > 0 ? documentState.linkedActivityIds.map(id => `<li>${activityLookup[id]?.name || id}</li>`).join('') : 'None'}</dd>
+                </dl>
+            </div>
+        `;
+
+        if (isCollapsed) {
+             docPanel.querySelector('.collapsible-panel-handle').click(); // Re-apply collapsed state if it was
+        }
+
+        docPanel.querySelector('.collapsible-panel-handle').addEventListener('click', togglePanelCollapse);
+        docPanel.querySelector('#open-json-btn').addEventListener('click', () => jsonFileInput.click());
+        docPanel.querySelector('#generate-json-btn').addEventListener('click', generateAndShowJson);
+
+    }
+    
+    function renderCanvasPanel() {
+        if (canvasMode === 'author') {
+            renderAuthorCanvas();
+        } else {
+            renderPreviewCanvas();
+        }
+    }
+
+    function renderAuthorCanvas() {
+         canvasPanel.innerHTML = `
+            <div class="panel-header">
+                <span>Canvas</span>
+                <div class="view-toggle-container">
+                    <button id="author-mode-btn" class="view-toggle-btn active">Author</button>
+                    <button id="preview-mode-btn" class="view-toggle-btn">Preview</button>
+                </div>
+            </div>
+            <div class="panel-content" id="canvas-container">
+                 <div class="drop-indicator" id="drop-indicator"></div>
+                 <div id="canvas"></div>
+            </div>
+            <div class="panel-footer">
+                <select id="add-atom-select">
+                    <option value="numbered-paragraph">Paragraph</option>
+                    <option value="heading">Heading</option>
+                    <option value="media">Media</option>
+                    <option value="annotation-cue">Annotation Cue</option>
+                    <option value="title">Title</option>
+                    <option value="author">Author</option>
+                </select>
+                <button id="add-atom-btn" class="primary">Add Atom</button>
+            </div>
+        `;
+
+        const canvas = document.getElementById('canvas');
+        canvas.innerHTML = ''; // Clear canvas
+        
+        let paragraphCounter = 1;
+        documentState.atoms.forEach(atom => {
+            const atomEl = document.createElement('div');
+            atomEl.className = `atom ${atom.type}-atom-wrapper`;
+            if (atom.id === selectedAtomId) {
+                atomEl.classList.add('selected');
+            }
+            atomEl.dataset.atomId = atom.id;
+            atomEl.draggable = true;
+
+            let contentHTML = '';
+            // Basic rendering logic for atoms on canvas
+            switch (atom.type) {
+                case 'title':
+                    contentHTML = `<h1 class="title-atom">${atom.content.text || 'Document Title'}</h1>`;
+                    break;
+                case 'author':
+                    contentHTML = `<p class="author-atom">${atom.content.text || 'By Author'}</p>`;
+                    break;
+                case 'numbered-paragraph':
+                    contentHTML = `<div class="numbered-paragraph-atom"><span class="paragraph-number">${paragraphCounter++}</span><div class="paragraph-text">${atom.content.text || '<p>Empty Paragraph</p>'}</div></div>`;
+                    break;
+                case 'heading':
+                    contentHTML = `<h2 class="heading-atom">${atom.content.text || 'New Heading'}</h2>`;
+                    break;
+                 case 'media':
+                    const src = atom.content.src || 'https://via.placeholder.com/600x200.png?text=Placeholder+Image';
+                    contentHTML = `<div class="atom-content"><img src="${src}" alt="${atom.content.fileName || 'media'}"></div>`;
+                    break;
+                case 'annotation-cue':
+                     contentHTML = `<div class="annotation-cue-container">...</div>`; // Simplified for canvas
+                    break;
+                default:
+                    contentHTML = `<div class="atom-placeholder" style="background-color: #607d8b;">${atom.type}</div>`;
+            }
+            
+            atomEl.innerHTML = contentHTML;
+
+            if (atom.displayRules && atom.displayRules.length > 0) {
+                 const badge = document.createElement('div');
+                 badge.className = 'conditional-badge';
+                 badge.textContent = 'CONDITIONAL';
+                 badge.title = `${atom.displayRules.length} display rule(s) applied.`;
+                 atomEl.appendChild(badge);
+            }
+
+            canvas.appendChild(atomEl);
+        });
+        
+        addCanvasEventListeners();
+    }
+    
+    function renderPreviewCanvas() {
+        canvasPanel.innerHTML = `
+            <div class="panel-header">
+                <span>Canvas Preview</span>
+                 <div class="view-toggle-container">
+                    <button id="author-mode-btn" class="view-toggle-btn">Author</button>
+                    <button id="preview-mode-btn" class="view-toggle-btn active">Preview</button>
+                </div>
+            </div>
+            <div class="preview-controls">
+                <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                    <label for="preview-activity-filter">Activity Context</label>
+                    <select id="preview-activity-filter">
+                        <option value="">All Linked Activities</option>
+                        ${(documentState.linkedActivityIds || []).map(id => 
+                            `<option value="${id}" ${previewContext.activityId === id ? 'selected' : ''}>${activityLookup[id]?.name || id}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <label for="preview-support-filter">Support Level</label>
+                    <select id="preview-support-filter">
+                         ${(documentState.availableSupportLevels || ALL_SUPPORT_LEVELS).map(level => 
+                            `<option value="${level}" ${previewContext.supportLevel === level ? 'selected' : ''}>${level.charAt(0).toUpperCase() + level.slice(1)}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="panel-content" id="preview-canvas-container">
+                 <div id="preview-canvas"></div>
+            </div>
+        `;
+        
+        const previewCanvas = document.getElementById('preview-canvas');
+        previewCanvas.innerHTML = '';
+        
+        let paragraphCounter = 1;
+        documentState.atoms.forEach(atom => {
+            if (checkAtomVisibility(atom, previewContext)) {
+                 const atomEl = document.createElement('div');
+                 atomEl.className = `atom ${atom.type}-atom-wrapper`;
+                 atomEl.dataset.atomId = atom.id;
+
+                let contentHTML = '';
+                 // This is the same rendering logic as author view, but could be different
+                 switch (atom.type) {
+                    case 'title': contentHTML = `<h1 class="title-atom">${atom.content.text || 'Document Title'}</h1>`; break;
+                    case 'author': contentHTML = `<p class="author-atom">${atom.content.text || 'By Author'}</p>`; break;
+                    case 'numbered-paragraph': contentHTML = `<div class="numbered-paragraph-atom"><span class="paragraph-number">${paragraphCounter++}</span><div class="paragraph-text">${atom.content.text || ''}</div></div>`; break;
+                    case 'heading': contentHTML = `<h2 class="heading-atom">${atom.content.text || 'New Heading'}</h2>`; break;
+                    case 'media': contentHTML = `<div class="atom-content"><img src="${atom.content.src || ''}" alt="${atom.content.fileName || ''}"></div>`; break;
+                    case 'annotation-cue': contentHTML = `<div class="annotation-cue-container">...</div>`; break; // Simplified for now
+                    default: contentHTML = `<div class="atom-placeholder">${atom.type}</div>`;
+                 }
+                 atomEl.innerHTML = contentHTML;
+                 previewCanvas.appendChild(atomEl);
+            }
+        });
+        
+        addPreviewEventListeners();
+    }
+    
+    function renderPropertiesPanel() {
+        // ... (Implementation for Properties Panel)
+        const selectedAtom = documentState.atoms.find(a => a.id === selectedAtomId);
+        const isCollapsed = propertiesPanel.classList.contains('collapsed');
+
+        let content = '<div class="panel-content"><p>Select an atom on the canvas to see its properties.</p></div>';
+        if (selectedAtom) {
+            content = `<div class="panel-content" id="properties-content">...</div>`; // Placeholder
+        }
+        
+        propertiesPanel.innerHTML = `
+            <div class="panel-header">
+                 <span>Properties</span>
+                 <span class="collapsible-panel-handle" data-panel-id="properties-panel" title="Toggle Panel">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12l4.58-4.59z"/></svg>
+                </span>
+            </div>
+            ${content}
+        `;
+        
+        if (isCollapsed) {
+             propertiesPanel.querySelector('.collapsible-panel-handle').click();
+        }
+
+        propertiesPanel.querySelector('.collapsible-panel-handle').addEventListener('click', togglePanelCollapse);
+    }
+    
+    // --- EVENT HANDLING ---
+    function addCanvasEventListeners() {
+        document.getElementById('add-atom-btn').addEventListener('click', addAtom);
+        document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
+        document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
+        
+        document.querySelectorAll('#canvas .atom').forEach(atomEl => {
+            atomEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectAtom(atomEl.dataset.atomId);
+            });
+        });
+    }
+    
+    function addPreviewEventListeners() {
+        document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
+        document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
+        
+        document.getElementById('preview-activity-filter').addEventListener('change', (e) => {
+            previewContext.activityId = e.target.value;
+            renderPreviewCanvas();
+        });
+        document.getElementById('preview-support-filter').addEventListener('change', (e) => {
+            previewContext.supportLevel = e.target.value;
+            renderPreviewCanvas();
+        });
+    }
+
+    // --- LOGIC ---
+    function setCanvasMode(mode) {
+        if (canvasMode === mode) return;
+        canvasMode = mode;
+        if (mode === 'preview') {
+            selectedAtomId = null; // Deselect atom when leaving author mode
+            renderPropertiesPanel();
+        }
+        renderCanvasPanel();
+    }
+    
+    function checkAtomVisibility(atom, context) {
+        // No rules means always visible in any context
+        if (!atom.displayRules || atom.displayRules.length === 0) {
+            return true;
+        }
+
+        // Atom is visible if ANY of its rules match the current context
+        return atom.displayRules.some(rule => {
+            // A rule matches if ALL its conditions are met by the context
+            const activityMatch = context.activityId === '' || rule.activityId === '' || rule.activityId === context.activityId;
+            const supportMatch = !context.supportLevel || (rule.supportLevel || []).length === 0 || (rule.supportLevel || []).includes(context.supportLevel);
+            
+            return activityMatch && supportMatch;
+        });
+    }
+    
+    function togglePanelCollapse(event) {
+        const handle = event.currentTarget;
+        const panelId = handle.dataset.panelId;
+        const panel = document.getElementById(panelId);
+        
+        if (panel) {
+            panel.classList.toggle('collapsed');
+            if (panelId === 'document-panel') {
+                editorContainer.classList.toggle('left-collapsed');
+            } else if (panelId === 'properties-panel') {
+                editorContainer.classList.toggle('right-collapsed');
+            }
+        }
+    }
+
+    function addAtom() {
+        const atomType = document.getElementById('add-atom-select').value;
+        const newAtom = {
+            id: generateUUID(),
+            type: atomType,
+            displayRules: [],
+            metadata: [],
+            glossaryEntries: [],
+            content: {}
+        };
+        // Add default content based on type
+        if (['title', 'author', 'numbered-paragraph', 'heading'].includes(atomType)) {
+            newAtom.content.text = '';
+        } else if (atomType === 'media') {
+            newAtom.content.src = '';
+            newAtom.content.fileName = '';
+        }
+        
+        documentState.atoms.push(newAtom);
+        selectAtom(newAtom.id);
+    }
+    
+    function selectAtom(atomId) {
+        if (selectedAtomId === atomId) return;
+        selectedAtomId = atomId;
+        render(); // Full re-render to update selection styles and properties panel
+    }
+    
+    function generateAndShowJson() {
+        const jsonString = JSON.stringify(documentState, null, 2);
+        console.log(jsonString);
+        alert("JSON generated in console. Modal UI not fully implemented in this stub.");
+    }
+    
+    function processManifest() {
+        activityLookup = {};
+        for (const grade in manifest.grades) {
+            for (const unit in manifest.grades[grade].units) {
+                manifest.grades[grade].units[unit].activities.forEach(activityName => {
+                    const activityId = generateDeterministicId(grade, unit, activityName);
+                    activityLookup[activityId] = { id: activityId, name: activityName, unit, grade };
+                });
+            }
+        }
+    }
 
     // --- INITIALIZATION ---
     async function initializeApp() {
@@ -319,16 +661,21 @@ document.addEventListener('DOMContentLoaded', () => {
             manifest = { grades: {} };
         }
         
-        // Temporarily create a default document to work with
-        documentState = { id: generateUUID(), linkedActivityIds: [], customActivities: [], availableSupportLevels: [...ALL_SUPPORT_LEVELS], metadata: [{key: "Title", value: "New Document"}], atoms: [] };
+        // Load a sample document by default
+        try {
+            const response = await fetch('the_medicine_bag (17).json');
+            documentState = await response.json();
+        } catch(error) {
+            console.error("Could not load sample JSON. Creating a new document.", error);
+            documentState = { id: generateUUID(), linkedActivityIds: [], customActivities: [], availableSupportLevels: [...ALL_SUPPORT_LEVELS], metadata: [{key: "Title", value: "New Document"}], atoms: [] };
+        }
         
         processManifest();
         render(); // Initial render
     }
     
-    // --- EVENT HANDLING & FULL IMPLEMENTATION ---
-    // The rest of the script is the complete, working code from rc1.beta.0.29 with the new features integrated.
-    // ...
+    initializeApp();
+});
 </script>
 </body>
 </html>
