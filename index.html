@@ -119,6 +119,7 @@
             gap: 16px;
             align-items: center;
             flex-shrink: 0;
+            flex-wrap: wrap;
         }
         .panel-content { 
             padding: 16px; 
@@ -224,6 +225,26 @@
         .view-toggle-btn { background: none; border: none; padding: 6px 14px; font-size: 13px; font-weight: 500; border-radius: 14px; cursor: pointer; color: var(--text-color-secondary); }
         .view-toggle-btn.active { background-color: var(--panel-bg); color: var(--primary-color); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         
+        #preview-criteria-display { flex-grow: 1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .criteria-tag, .criteria-tag-none {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-weight: 500;
+        }
+        .criteria-tag-none {
+            color: var(--text-color-hint);
+            font-style: italic;
+        }
+        .criteria-tag {
+            background-color: var(--active-context-bg);
+            color: var(--primary-hover);
+        }
+        .criteria-tag.support {
+            background-color: #fff8e1;
+            color: #f57f17;
+        }
+
         /* New Atom Styles */
         .title-atom { font-size: 34px; font-weight: 700; line-height: 40px; margin: 0 0 8px 0; }
         .author-atom { font-size: 16px; color: var(--text-color-primary); margin: 0 0 24px 0; }
@@ -549,7 +570,7 @@
 <script id="main-script">
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.32";
+    const APP_VERSION = "rc1.beta.0.33";
 
     // --- MANIFEST & DATABASE SIMULATION ---
     let manifest = {};
@@ -680,12 +701,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button id="author-mode-btn" class="view-toggle-btn">Author</button>
                     <button id="preview-mode-btn" class="view-toggle-btn active">Preview</button>
                 </div>
+                <div id="preview-criteria-display"></div>
                 <button id="set-display-criteria-btn">Set Display Criteria</button>
             </div>
             <div id="preview-canvas" class="panel-content">
             </div>
         `;
         renderCanvasContent(document.getElementById('preview-canvas'), true);
+
+        const criteriaContainer = document.getElementById('preview-criteria-display');
+        if (previewContext.activityIds.length > 0 || previewContext.supportLevels.length > 0) {
+            const activityTags = previewContext.activityIds.map(id => {
+                const name = activityLookup[id]?.name || 'Unknown';
+                const displayName = name.length > 25 ? name.substring(0, 22) + '...' : name;
+                return `<span class="criteria-tag" title="${name}">${displayName}</span>`;
+            }).join('');
+            const supportTags = previewContext.supportLevels.map(level => 
+                `<span class="criteria-tag support">${level}</span>`
+            ).join('');
+            criteriaContainer.innerHTML = activityTags + supportTags;
+        } else {
+            criteriaContainer.innerHTML = `<span class="criteria-tag-none">Showing base content only</span>`;
+        }
     }
 
     function renderCanvasContent(canvasEl, isPreview) {
@@ -799,21 +836,27 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         }
 
+        if (previewContext.activityIds.length === 0 && previewContext.supportLevels.length === 0) {
+            return false;
+        }
+
         return atom.displayRules.some(rule => {
             const ruleActivities = (Array.isArray(rule.activityId) ? rule.activityId : (rule.activityId ? [rule.activityId] : [])).filter(Boolean);
             const ruleSupports = rule.supportLevel || [];
 
-            const isRuleForAllActivities = ruleActivities.length === 0;
-            const isRuleForAllSupports = ruleSupports.length === 0;
-
-            if (previewContext.activityIds.length === 0 && previewContext.supportLevels.length === 0) {
-                return false;
-            }
-
-            let activityMatch = previewContext.activityIds.length === 0 || isRuleForAllActivities || ruleActivities.some(id => previewContext.activityIds.includes(id));
-            let supportMatch = previewContext.supportLevels.length === 0 || isRuleForAllSupports || ruleSupports.some(level => previewContext.supportLevels.includes(level));
+            const activityMatch = ruleActivities.length === 0 || ruleActivities.some(id => previewContext.activityIds.includes(id));
+            const supportMatch = ruleSupports.length === 0 || ruleSupports.some(level => previewContext.supportLevels.includes(level));
             
-            return activityMatch && supportMatch;
+            if (previewContext.activityIds.length > 0 && previewContext.supportLevels.length > 0) {
+                return activityMatch && supportMatch;
+            }
+            if (previewContext.activityIds.length > 0) {
+                return activityMatch;
+            }
+            if (previewContext.supportLevels.length > 0) {
+                return supportMatch;
+            }
+            return false;
         });
     }
 
@@ -840,7 +883,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- EVENT LISTENERS ---
+    // --- EVENT LISTENERS (DELEGATED) ---
     canvasPanel.addEventListener('click', e => {
         const target = e.target;
         if (target.id === 'author-mode-btn') { setCanvasMode('author'); }
