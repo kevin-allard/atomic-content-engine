@@ -81,6 +81,10 @@
             height: calc(100vh - var(--header-height));
             gap: 16px;
             padding: 16px;
+            transition: grid-template-columns 0.3s ease-in-out;
+        }
+        .editor-container.left-collapsed {
+            grid-template-columns: 40px 1fr 360px;
         }
         .panel {
             background-color: var(--panel-bg);
@@ -90,7 +94,7 @@
             display: flex;
             flex-direction: column;
             overflow: hidden; 
-            transition: background-color 0.3s ease, border-color 0.3s ease;
+            transition: all 0.3s ease-in-out;
         }
         .panel.is-active-context {
             background-color: var(--active-context-bg);
@@ -103,6 +107,9 @@
             font-size: 18px;
             color: var(--text-color-primary);
             flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .panel-content { 
             padding: 16px; 
@@ -123,6 +130,47 @@
         .panel-footer button {
             flex-grow: 1;
         }
+        /* Collapsible Panel Styles */
+        .collapsible-panel-handle {
+            cursor: pointer;
+            color: var(--text-color-secondary);
+            padding: 4px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s, transform 0.3s ease-in-out;
+        }
+        .collapsible-panel-handle:hover {
+            background-color: rgba(0,0,0,0.05);
+        }
+        .panel.collapsed {
+            cursor: pointer;
+        }
+        .panel.collapsed .panel-content, .panel.collapsed .panel-footer {
+            display: none;
+        }
+        .panel.collapsed .panel-header {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            align-items: flex-start;
+            height: 100%;
+            border-bottom: none;
+            border-right: 1px solid var(--border-color);
+            width: 40px;
+            padding: 16px 8px;
+        }
+        .panel.collapsed .panel-header > span:first-child {
+            max-height: calc(100% - 30px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .panel.collapsed .collapsible-panel-handle {
+            transform: rotate(180deg);
+        }
+
         #canvas { padding: 24px; }
         .atom {
             padding: 0;
@@ -292,10 +340,15 @@
             <img src="images/avatar.png" alt="User Avatar" class="user-avatar">
         </div>
     </header>
-    <div class="editor-container">
+    <div class="editor-container" id="editor-container">
         <!-- Left Panel -->
         <div id="document-panel" class="panel">
-            <div class="panel-header">Document Properties</div>
+            <div class="panel-header">
+                <span>Document Properties</span>
+                <span class="collapsible-panel-handle" data-panel-id="document-panel" title="Toggle Panel">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12l4.58-4.59z"/></svg>
+                </span>
+            </div>
             <div class="panel-content">
                 <div class="form-group">
                     <label>Document ID</label>
@@ -462,7 +515,7 @@
 <script id="main-script">
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.29";
+    const APP_VERSION = "rc1.beta.0.30";
 
     // --- MANIFEST & DATABASE SIMULATION ---
     let manifest = {};
@@ -653,9 +706,29 @@ document.addEventListener('DOMContentLoaded', () => {
             manifest = { grades: {} };
         }
         processManifest();
+        
+        // Add event listener for the new collapsible handle
+        document.querySelector('[data-panel-id="document-panel"]').addEventListener('click', togglePanelCollapse);
+
         fullRender();
     }
     
+    function togglePanelCollapse(event) {
+        const handle = event.currentTarget;
+        const panelId = handle.dataset.panelId;
+        const panel = document.getElementById(panelId);
+        const editorContainer = document.getElementById('editor-container');
+        
+        const clickTarget = event.target.closest('.collapsible-panel-handle, .panel.collapsed');
+
+        if (panel && clickTarget) {
+            panel.classList.toggle('collapsed');
+            if (panelId === 'document-panel') {
+                editorContainer.classList.toggle('left-collapsed');
+            } 
+        }
+    }
+
     function processManifest() {
         activityLookup = {};
         if (!manifest.grades) return;
