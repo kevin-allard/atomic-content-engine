@@ -111,6 +111,15 @@
             justify-content: space-between;
             align-items: center;
         }
+        .canvas-panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: #fafafa;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-shrink: 0;
+        }
         .panel-content { 
             padding: 16px; 
             flex-grow: 1;
@@ -171,7 +180,7 @@
             transform: rotate(180deg);
         }
 
-        #canvas { padding: 24px; }
+        #canvas, #preview-canvas { padding: 24px; }
         .atom {
             padding: 0;
             border: 2px solid transparent;
@@ -180,6 +189,9 @@
             cursor: grab;
             position: relative;
         }
+        #preview-canvas .atom { border-color: transparent !important; cursor: default; }
+        #preview-canvas .atom:hover { border-color: transparent !important; }
+
         .atom.dragging { opacity: 0.5; }
         .atom:hover { border-color: #c5cae9; } /* Indigo 100 */
         .atom.selected { border-color: var(--primary-color); }
@@ -207,6 +219,10 @@
             z-index: 20;
             transition: top 0.1s ease-out, opacity 0.1s ease-out;
         }
+        
+        .view-toggle-container { display: flex; align-items: center; background-color: #e0e0e0; border-radius: 16px; padding: 2px; }
+        .view-toggle-btn { background: none; border: none; padding: 6px 14px; font-size: 13px; font-weight: 500; border-radius: 14px; cursor: pointer; color: var(--text-color-secondary); }
+        .view-toggle-btn.active { background-color: var(--panel-bg); color: var(--primary-color); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         
         /* New Atom Styles */
         .title-atom { font-size: 34px; font-weight: 700; line-height: 40px; margin: 0 0 8px 0; }
@@ -280,6 +296,7 @@
         .modal-tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
         .modal-tab-content { display: none; padding: 24px; }
         .modal-tab-content.active { display: block; }
+        .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px;}
 
         #json-output { width: 100%; height: 100%; font-family: monospace; font-size: 13px; border: 1px solid var(--border-color); border-radius: 4px; resize: none; }
         #activity-link-list { list-style-type: none; padding: 0; margin: 0; }
@@ -403,13 +420,7 @@
 
         <!-- Center Panel -->
         <div id="canvas-panel" class="panel">
-            <div id="canvas" class="panel-content">
-                <div class="drop-indicator"></div>
-            </div>
-            <div class="panel-footer">
-                <select id="add-atom-type"></select>
-                <button id="add-atom-btn" class="primary">Add Content Atom</button>
-            </div>
+            <!-- Content is now dynamically rendered -->
         </div>
 
         <!-- Right Panel -->
@@ -511,11 +522,34 @@
     
     <div id="glossary-modal-overlay" class="modal-overlay"></div>
     <div id="glossary-modal-container" class="modal-container"><div class="modal-header"><h3>Glossary Entry Editor</h3><button class="modal-close-btn" data-modal="glossary">&times;</button></div><div class="modal-content" style="padding: 24px;"><div class="form-group"><label>Term</label><input type="text" id="glossary-term-text" readonly></div><hr><div id="definitions-list"></div><button id="add-definition-btn">Add Definition</button></div><div class="modal-footer"><button id="cancel-glossary-btn">Cancel</button><button id="save-glossary-btn" class="primary">Save Entry</button></div></div>
+    
+    <div id="preview-context-modal-overlay" class="modal-overlay"></div>
+    <div id="preview-context-modal-container" class="modal-container">
+        <div class="modal-header">
+            <h3>Set Preview Context</h3>
+            <button class="modal-close-btn" data-modal="preview-context">&times;</button>
+        </div>
+        <div class="modal-content" style="padding: 24px;">
+            <div class="modal-grid">
+                <div class="form-group">
+                    <label>Activities</label>
+                    <div id="preview-context-activities" class="checkbox-group"></div>
+                </div>
+                <div class="form-group">
+                    <label>Support Levels</label>
+                    <div id="preview-context-supports" class="checkbox-group"></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+             <button id="apply-preview-filters-btn" class="primary">Apply Filters</button>
+        </div>
+    </div>
 
 <script id="main-script">
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.30";
+    const APP_VERSION = "rc1.beta.0.31";
 
     // --- MANIFEST & DATABASE SIMULATION ---
     let manifest = {};
@@ -567,6 +601,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedAtomId = null;
     let currentMetadataContext = { type: null, target: null };
     let currentGlossaryContext = { atomId: null, entry: null, selection: null };
+    let canvasMode = 'author'; // 'author' or 'preview'
+    let previewContext = {
+        activityIds: [],
+        supportLevels: []
+    };
+
+    // --- UI ELEMENTS ---
+    const canvasPanel = document.getElementById('canvas-panel');
 
     // --- UTILITY FUNCTIONS ---
     function generateUUID() { return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
@@ -599,10 +641,129 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderLinkedActivities() { const listEl = document.getElementById('activity-list'); listEl.innerHTML = ''; if (documentState.linkedActivityIds.length === 0) { listEl.innerHTML = '<p style="font-size: 0.9em; color: var(--text-color-secondary);">No activities linked yet.</p>'; return; } const fragment = document.createDocumentFragment(); documentState.linkedActivityIds.forEach(id => { const activity = activityLookup[id]; if (activity) { const itemEl = document.createElement('div'); itemEl.className = 'activity-item'; itemEl.textContent = activity.name; fragment.appendChild(itemEl); } else { const itemEl = document.createElement('div'); itemEl.className = 'activity-item'; itemEl.style.color = 'var(--danger-color)'; itemEl.textContent = `Broken Link: ${id}`; fragment.appendChild(itemEl); } }); listEl.appendChild(fragment); }
     function renderSupportLevels() { const listEl = document.getElementById('support-levels-list'); listEl.innerHTML = ''; ALL_SUPPORT_LEVELS.forEach(level => { const isChecked = documentState.availableSupportLevels.includes(level); const label = document.createElement('label'); label.innerHTML = `<input type="checkbox" data-level="${level}" ${isChecked ? 'checked' : ''}> ${level.replace(/-/g, ' ')}`; listEl.appendChild(label); }); }
-    function renderCanvas() { const canvas = document.getElementById('canvas'); canvas.innerHTML = '<div class="drop-indicator"></div>'; let numberedParagraphCounter = 1; documentState.atoms.forEach(atom => { const atomEl = document.createElement('div'); atomEl.className = 'atom'; atomEl.dataset.atomId = atom.id; atomEl.dataset.atomType = atom.type; atomEl.draggable = true; if (atom.id === selectedAtomId) atomEl.classList.add('selected'); let content = ''; let textWithGlossary = atom.content?.text || ''; if (atom.glossaryEntries && textWithGlossary) { const tempDiv = document.createElement('div'); tempDiv.innerHTML = textWithGlossary; let plainText = tempDiv.textContent || tempDiv.innerText || ""; atom.glossaryEntries.slice().sort((a,b) => b.startOffset - a.startOffset).forEach(entry => { const tooltip = (entry.definitions || []).map(d => d.definitionText).join('\n'); plainText = `${plainText.substring(0, entry.startOffset)}<span class="glossary-term-canvas" title="${tooltip.replace(/"/g, '&quot;')}">${entry.termText}</span>${plainText.substring(entry.endOffset)}`; }); textWithGlossary = `<p>${plainText}</p>`; } switch (atom.type) { case 'title': const titleMeta = documentState.metadata.find(m => m.key === 'Title')?.value || '[Title]'; content = `<h1 class="title-atom">${titleMeta}</h1>`; atomEl.innerHTML = content; break; case 'author': const authorMeta = documentState.metadata.find(m => m.key === 'Author')?.value || '[Author]'; const dateMeta = documentState.metadata.find(m => m.key === 'Publication Date')?.value; const year = dateMeta ? `, ${new Date(dateMeta).getFullYear() + 1}` : ''; content = `<p class="author-atom">by ${authorMeta}${year}</p>`; atomEl.innerHTML = content; break; case 'numbered-paragraph': const paraText = textWithGlossary || '<p><em style="color:#999;">Empty paragraph...</em></p>'; atomEl.innerHTML = `<div class="numbered-paragraph-atom"><span class="paragraph-number">${numberedParagraphCounter++}</span><div class="paragraph-text">${paraText}</div></div>`; break; case 'paragraph': const paragraphText = textWithGlossary || '<p><em style="color:#999;">Empty paragraph...</em></p>'; atomEl.innerHTML = `<div class="atom-content">${paragraphText}</div>`; break; case 'heading': const headingText = textWithGlossary || '<h2><em style="color:#999;">Empty heading...</em></h2>'; atomEl.innerHTML = `<div class="atom-content heading-atom">${headingText}</div>`; break; case 'annotation-cue': const textContent = textWithGlossary || '<em style="color:#999;">Type question or prompt here...</em>'; atomEl.innerHTML = `<div class="annotation-cue-container"><div class="cue-play-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z" /></svg></div><div class="cue-content-wrapper"><div class="cue-header"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg> <span>Stop and Annotate</span></div><div class="cue-body">${textContent}</div></div></div>`; break; case 'media': if (atom.content.src) { content = `<img src="${atom.content.src}" alt="User uploaded media">`; } else { content = `<div class="atom-placeholder media">Media: No image selected</div>`; } atomEl.innerHTML = content; break; default: let placeholderText = ''; switch(atom.type) { case 'interactive': placeholderText = `Interactive Placeholder`; break; case 'learnosity': placeholderText = `Learnosity Item Placeholder`; break; } content = `<div class="atom-placeholder ${atom.type}">${placeholderText}</div>`; atomEl.innerHTML = content; } if ((atom.displayRules || []).length > 0) { const badge = document.createElement('span'); badge.className = 'conditional-badge'; badge.textContent = 'R'; badge.title = getRuleTooltipText(atom); atomEl.appendChild(badge); } canvas.appendChild(atomEl); }); }
+    
+    function renderCanvasPanel() {
+        if (canvasMode === 'author') {
+            renderAuthorCanvas();
+        } else {
+            renderPreviewCanvas();
+        }
+    }
+
+    function renderAuthorCanvas() {
+        canvasPanel.innerHTML = `
+            <div class="canvas-panel-header">
+                <div class="view-toggle-container">
+                    <button id="author-mode-btn" class="view-toggle-btn active">Author</button>
+                    <button id="preview-mode-btn" class="view-toggle-btn">Preview</button>
+                </div>
+            </div>
+            <div id="canvas" class="panel-content">
+                <div class="drop-indicator"></div>
+            </div>
+            <div class="panel-footer">
+                <select id="add-atom-type"></select>
+                <button id="add-atom-btn" class="primary">Add Content Atom</button>
+            </div>
+        `;
+
+        renderCanvasContent(document.getElementById('canvas'), false);
+        
+        // Re-attach event listeners for author mode
+        document.getElementById('add-atom-btn').addEventListener('click', addAtom);
+        document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
+        document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
+        const atomTypeSelect = document.getElementById('add-atom-type');
+        const atomTypes = [ { value: 'annotation-cue', text: 'Annotation Cue' }, { value: 'author', text: 'Author' }, { value: 'heading', text: 'Heading' }, { value: 'interactive', text: 'Interactive' }, { value: 'learnosity', text: 'Learnosity' }, { value: 'media', text: 'Media' }, { value: 'numbered-paragraph', text: 'Numbered Paragraph' }, { value: 'paragraph', text: 'Paragraph' }, { value: 'title', text: 'Title' } ];
+        atomTypeSelect.innerHTML = atomTypes.map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('');
+
+    }
+    
+    function renderPreviewCanvas() {
+        canvasPanel.innerHTML = `
+            <div class="canvas-panel-header">
+                <div class="view-toggle-container">
+                    <button id="author-mode-btn" class="view-toggle-btn">Author</button>
+                    <button id="preview-mode-btn" class="view-toggle-btn active">Preview</button>
+                </div>
+                <button id="set-preview-context-btn">Set Preview Context</button>
+            </div>
+            <div id="preview-canvas" class="panel-content">
+                 <!-- Preview content will be rendered here -->
+            </div>
+        `;
+
+        renderCanvasContent(document.getElementById('preview-canvas'), true);
+        
+        // Re-attach event listeners for preview mode
+        document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
+        document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
+        document.getElementById('set-preview-context-btn').addEventListener('click', () => {
+            renderPreviewContextModal();
+            openModal('preview-context');
+        });
+    }
+
+    function renderCanvasContent(canvasEl, isPreview) {
+        if (!canvasEl) return;
+        canvasEl.innerHTML = isPreview ? '' : '<div class="drop-indicator"></div>'; 
+        let numberedParagraphCounter = 1; 
+
+        const atomsToRender = isPreview 
+            ? documentState.atoms.filter(atom => checkAtomVisibility(atom, previewContext))
+            : documentState.atoms;
+
+        atomsToRender.forEach(atom => {
+            const atomEl = document.createElement('div');
+            atomEl.className = 'atom';
+            atomEl.dataset.atomId = atom.id;
+            atomEl.dataset.atomType = atom.type;
+
+            if (!isPreview) {
+                atomEl.draggable = true;
+                if (atom.id === selectedAtomId) atomEl.classList.add('selected');
+            }
+
+            let content = '';
+            let textWithGlossary = atom.content?.text || '';
+            if (atom.glossaryEntries && textWithGlossary) { const tempDiv = document.createElement('div'); tempDiv.innerHTML = textWithGlossary; let plainText = tempDiv.textContent || tempDiv.innerText || ""; atom.glossaryEntries.slice().sort((a,b) => b.startOffset - a.startOffset).forEach(entry => { const tooltip = (entry.definitions || []).map(d => d.definitionText).join('\n'); plainText = `${plainText.substring(0, entry.startOffset)}<span class="glossary-term-canvas" title="${tooltip.replace(/"/g, '&quot;')}">${entry.termText}</span>${plainText.substring(entry.endOffset)}`; }); textWithGlossary = `<p>${plainText}</p>`; }
+
+            switch (atom.type) {
+                case 'title': const titleMeta = documentState.metadata.find(m => m.key === 'Title')?.value || '[Title]'; content = `<h1 class="title-atom">${titleMeta}</h1>`; atomEl.innerHTML = content; break;
+                case 'author': const authorMeta = documentState.metadata.find(m => m.key === 'Author')?.value || '[Author]'; const dateMeta = documentState.metadata.find(m => m.key === 'Publication Date')?.value; const year = dateMeta ? `, ${new Date(dateMeta).getFullYear() + 1}` : ''; content = `<p class="author-atom">by ${authorMeta}${year}</p>`; atomEl.innerHTML = content; break;
+                case 'numbered-paragraph': 
+                    if (atom.type === 'numbered-paragraph') {
+                        const paraText = textWithGlossary || '<p><em style="color:#999;">Empty paragraph...</em></p>'; atomEl.innerHTML = `<div class="numbered-paragraph-atom"><span class="paragraph-number">${numberedParagraphCounter++}</span><div class="paragraph-text">${paraText}</div></div>`; 
+                    }
+                    break;
+                case 'paragraph': const paragraphText = textWithGlossary || '<p><em style="color:#999;">Empty paragraph...</em></p>'; atomEl.innerHTML = `<div class="atom-content">${paragraphText}</div>`; break;
+                case 'heading': const headingText = textWithGlossary || '<h2><em style="color:#999;">Empty heading...</em></h2>'; atomEl.innerHTML = `<div class="atom-content heading-atom">${headingText}</div>`; break;
+                case 'annotation-cue': const textContent = textWithGlossary || '<em style="color:#999;">Type question or prompt here...</em>'; atomEl.innerHTML = `<div class="annotation-cue-container"><div class="cue-play-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z" /></svg></div><div class="cue-content-wrapper"><div class="cue-header"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg> <span>Stop and Annotate</span></div><div class="cue-body">${textContent}</div></div></div>`; break;
+                case 'media': if (atom.content.src) { content = `<img src="${atom.content.src}" alt="User uploaded media">`; } else { content = `<div class="atom-placeholder media">Media: No image selected</div>`; } atomEl.innerHTML = content; break;
+                default: let placeholderText = ''; switch(atom.type) { case 'interactive': placeholderText = `Interactive Placeholder`; break; case 'learnosity': placeholderText = `Learnosity Item Placeholder`; break; } content = `<div class="atom-placeholder ${atom.type}">${placeholderText}</div>`; atomEl.innerHTML = content;
+            }
+            if (!isPreview && (atom.displayRules || []).length > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'conditional-badge';
+                badge.textContent = 'R';
+                badge.title = getRuleTooltipText(atom);
+                atomEl.appendChild(badge);
+            }
+            canvasEl.appendChild(atomEl);
+        });
+        
+        // This is a bit inefficient to run every render, but ensures paragraph numbers are correct in preview
+        if (isPreview) {
+            let previewCounter = 1;
+            canvasEl.querySelectorAll('.numbered-paragraph-atom .paragraph-number').forEach(numEl => {
+                numEl.textContent = previewCounter++;
+            });
+        }
+    }
+
     function renderPropertiesPanel(isNewAtom = false) { const propertiesContent = document.getElementById('properties-content'); if (activeEditorInstance) { tinymce.get(activeEditorInstance.id)?.remove(); activeEditorInstance = null; } const relationshipsPanel = document.getElementById('relationships-section'); const openStates = {}; propertiesContent.querySelectorAll('.collapsible-section[data-section-id]').forEach(section => { if (section.classList.contains('open')) { openStates[section.dataset.sectionId] = true; } }); if (!selectedAtomId) { propertiesContent.innerHTML = '<p>Select an atom to see its properties.</p>'; relationshipsPanel.classList.remove('is-active-context'); return; } if (isNewAtom) { openStates['core'] = true; } relationshipsPanel.classList.add('is-active-context'); const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; let contentHtml = ''; let glossaryListHtml = ''; if (atom.glossaryEntries && atom.glossaryEntries.length > 0) { const listItems = atom.glossaryEntries.sort((a, b) => a.termText.localeCompare(b.termText)).map(entry => `<span class="glossary-term-list-item" data-glossary-id="${entry.id}">${entry.termText}</span>`).join(''); glossaryListHtml = `<div class="glossary-term-list-container"><h5>Defined Terms</h5><div class="glossary-term-list">${listItems}</div></div>`; } switch(atom.type) { case 'title': contentHtml = `<p style="font-size:0.9em; color:var(--text-color-secondary)">This atom displays the Document's Title metadata. Edit this in Document Properties &gt; Metadata.</p>`; break; case 'author': contentHtml = `<p style="font-size:0.9em; color:var(--text-color-secondary)">This atom displays the Document's Author and Publication Date metadata. Edit this in Document Properties &gt; Metadata.</p>`; break; case 'numbered-paragraph': case 'paragraph': case 'heading': case 'annotation-cue': contentHtml = `<div class="form-group"><label>Text Content</label><textarea id="atom-text-editor">${atom.content.text || ''}</textarea><button id="add-glossary-term-btn" disabled style="margin-top: 8px;">Add Glossary Term</button>${glossaryListHtml}</div>`; break; case 'media': const previewImage = atom.content.src ? `<img src="${atom.content.src}" class="property-preview-image">` : '<p style="font-size:0.9em;color:#777">No image selected.</p>'; contentHtml = `<div class="form-group"><label>Image Source</label><button id="choose-image-btn">Choose Image</button>${previewImage}</div>`; break; default: contentHtml = `<p>Properties for <strong>${atom.type}</strong> atoms would go here.</p>`; } const rulesHtml = (atom.displayRules || []).map((rule, index) => { const linkedActivities = documentState.linkedActivityIds.map(id => activityLookup[id]).filter(Boolean); if (rule.isEditing) { const isAnyChecked = !Array.isArray(rule.activityId) || rule.activityId.length === 0; const activityCheckboxes = linkedActivities.map(act => { const isChecked = Array.isArray(rule.activityId) && rule.activityId.includes(act.id); return `<label><input type="checkbox" class="rule-activity-checkbox" value="${act.id}" ${isChecked ? 'checked' : ''} ${isAnyChecked ? 'disabled' : ''}> ${act.name}</label>`; }).join(''); const supportCheckboxes = documentState.availableSupportLevels.map(level => `<label><input type="checkbox" class="rule-input-checkbox" data-level="${level}" ${(rule.supportLevel || []).includes(level) ? 'checked' : ''}> ${level.replace(/-/g, ' ')}</label>`).join(''); const allChecked = documentState.availableSupportLevels.length > 0 && documentState.availableSupportLevels.every(level => (rule.supportLevel || []).includes(level)); return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Editing Criterion ${index + 1}</span><div class="actions"><button class="icon-btn save-rule-btn" title="Save Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z" /></svg></button></div></div><div class="form-group checkbox-group"><label><strong>Activity</strong></label><label><input type="checkbox" class="any-activity-checkbox" ${isAnyChecked ? 'checked' : ''}> Any Linked Activity</label><hr>${activityCheckboxes}</div><div class="form-group checkbox-group"><label><input type="checkbox" class="check-all-support" ${allChecked ? 'checked' : ''}> <strong>Support Level(s)</strong></label><div class="support-level-options">${supportCheckboxes}</div></div></div>`; } else { const activityNames = Array.isArray(rule.activityId) && rule.activityId.length > 0 ? rule.activityId.map(id => activityLookup[id]?.name || 'Unknown').join(', ') : "Any Linked Activity"; const levels = rule.supportLevel.length > 0 ? rule.supportLevel.join(', ').replace(/-/g, ' ') : "All Available Levels"; return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Criterion ${index + 1}</span><div class="actions"><button class="icon-btn edit-rule-btn" title="Edit Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button><button class="icon-btn delete-rule-btn delete" title="Delete Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg></button></div></div><p style="font-size:0.9em; margin: 0.5em 0; line-height: 1.5;"><strong>Activity:</strong> ${activityNames}<br><strong>Support:</strong> ${levels}</p></div>`; } }).join(''); propertiesContent.innerHTML = `<div class="collapsible-section ${openStates['core'] ? 'open' : ''}" data-section-id="core"><div class="collapsible-header"><h4>Core Properties</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div class="form-group"><label>Atom ID</label><input type="text" value="${atom.id}" readonly></div>${contentHtml}</div></div><div class="collapsible-section ${openStates['criteria'] ? 'open' : ''}" data-section-id="criteria"><div class="collapsible-header"><h4>Display Criteria</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div id="rules-container">${rulesHtml}</div><button id="add-rule-btn">Add Display Criterion</button></div></div><div class="collapsible-section ${openStates['metadata'] ? 'open' : ''}" data-section-id="metadata"><div class="collapsible-header"><h4>Metadata</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div class="atom-metadata-display"></div><button class="edit-atom-metadata-btn">Edit Metadata</button></div></div><button id="delete-atom-btn" style="background-color: var(--danger-color); color: white; width: 100%; margin-top: 1rem;">Delete Atom</button>`; if (['numbered-paragraph', 'paragraph', 'heading', 'annotation-cue'].includes(atom.type)) { initializeTinyMCE(); } renderMetadataDisplay(atom, propertiesContent.querySelector('.atom-metadata-display')); }
     function renderMetadataDisplay(target, containerEl) { if (!containerEl) return; containerEl.innerHTML = ''; if (!target || !target.metadata || !target.metadata.length === 0) { containerEl.innerHTML = '<p style="font-size: 0.9em; color: var(--text-color-secondary);">No metadata associated.</p>'; return; } const dl = document.createElement('dl'); dl.className = 'metadata-display-list'; target.metadata.forEach(meta => { if (meta.value && meta.value.length > 0) { const dt = document.createElement('dt'); dt.textContent = meta.key; const dd = document.createElement('dd'); dd.textContent = Array.isArray(meta.value) ? meta.value.join(', ') : meta.value; dl.appendChild(dt); dl.appendChild(dd); } }); containerEl.appendChild(dl); }
-    function fullRender(isNewAtom = false) { document.getElementById('doc-id').value = documentState.id; renderLinkedActivities(); renderSupportLevels(); renderCanvas(); renderPropertiesPanel(isNewAtom); renderMetadataDisplay(documentState, document.getElementById('doc-metadata-display')); }
+    function fullRender(isNewAtom = false) { document.getElementById('doc-id').value = documentState.id; renderLinkedActivities(); renderSupportLevels(); renderCanvasPanel(); renderPropertiesPanel(isNewAtom); renderMetadataDisplay(documentState, document.getElementById('doc-metadata-display')); }
     
     function initializeTinyMCE() {
         tinymce.init({
@@ -617,7 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const atom = documentState.atoms.find(a => a.id === selectedAtomId);
                     if (atom) {
                         atom.content.text = editor.getContent();
-                        renderCanvas(); 
+                        renderCanvasPanel(); 
                     }
                 });
                 editor.on('NodeChange', () => { // For selection changes
@@ -630,11 +791,90 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- LOGIC ---
+    function setCanvasMode(mode) {
+        if (canvasMode === mode) return;
+        canvasMode = mode;
+        if (mode === 'preview') {
+            selectedAtomId = null; // Deselect atom when leaving author mode
+        }
+        fullRender();
+    }
+    
+    function addAtom() {
+        const type = document.getElementById('add-atom-type').value;
+        const newAtom = {
+            id: generateUUID(),
+            type: type,
+            displayRules: [{ activityId: [], supportLevel: [...documentState.availableSupportLevels], isEditing: false }],
+            metadata: [],
+            glossaryEntries: []
+        };
+        newAtom.content = { text: '' };
+        documentState.atoms.push(newAtom);
+        selectedAtomId = newAtom.id;
+        fullRender(true);
+    }
+    
+    function checkAtomVisibility(atom, context) {
+        if (!atom.displayRules || atom.displayRules.length === 0) {
+            return true; // No rules means always visible
+        }
+
+        // Atom is visible if ANY of its rules match the current context
+        return atom.displayRules.some(rule => {
+            const ruleActivities = rule.activityId || [];
+            const ruleSupports = rule.supportLevel || [];
+
+            // Activity check
+            const activityMatch = ruleActivities.length === 0 || // Rule is for "Any Linked Activity"
+                                  ruleActivities.some(actId => context.activityIds.includes(actId)); // At least one rule activity is in the context
+            
+            // Support Level check
+            const supportMatch = ruleSupports.length === 0 || // Rule is for "All Support Levels"
+                                 ruleSupports.some(sup => context.supportLevels.includes(sup)); // At least one rule support is in the context
+            
+            // If context is empty, only show universal content
+            if (context.activityIds.length === 0 && context.supportLevels.length === 0) {
+                return ruleActivities.length === 0 && ruleSupports.length === 0;
+            }
+
+            return activityMatch && supportMatch;
+        });
+    }
+    
+    function renderPreviewContextModal() {
+        const activitiesContainer = document.getElementById('preview-context-activities');
+        const supportsContainer = document.getElementById('preview-context-supports');
+        activitiesContainer.innerHTML = '';
+        supportsContainer.innerHTML = '';
+
+        documentState.linkedActivityIds.forEach(id => {
+            const activity = activityLookup[id];
+            if (activity) {
+                const isChecked = previewContext.activityIds.includes(id);
+                activitiesContainer.innerHTML += `<label><input type="checkbox" value="${id}" ${isChecked ? 'checked' : ''}> ${activity.name}</label>`;
+            }
+        });
+        
+        documentState.availableSupportLevels.forEach(level => {
+            const isChecked = previewContext.supportLevels.includes(level);
+            supportsContainer.innerHTML += `<label><input type="checkbox" value="${level}" ${isChecked ? 'checked' : ''}> ${level.replace(/-/g, ' ')}</label>`;
+        });
+    }
+
     // --- EVENT LISTENERS ---
-    document.getElementById('add-atom-btn').addEventListener('click', () => { const type = document.getElementById('add-atom-type').value; const newAtom = { id: generateUUID(), type: type, displayRules: [{activityId:[], supportLevel:[...documentState.availableSupportLevels], isEditing:false}], metadata: [], glossaryEntries: [] }; newAtom.content = {text: ''}; documentState.atoms.push(newAtom); selectedAtomId = newAtom.id; fullRender(true); });
-    document.getElementById('canvas').addEventListener('click', (e) => { const atomEl = e.target.closest('.atom'); if (atomEl) { selectedAtomId = atomEl.dataset.atomId; fullRender(); } });
+    canvasPanel.addEventListener('click', (e) => { 
+        if (canvasMode === 'author') {
+            const atomEl = e.target.closest('.atom'); 
+            if (atomEl) { 
+                selectedAtomId = atomEl.dataset.atomId; 
+                fullRender(); 
+            }
+        }
+    });
     document.getElementById('support-levels-list').addEventListener('change', e => { if (e.target.type === 'checkbox') { const level = e.target.dataset.level; if (e.target.checked) { if (!documentState.availableSupportLevels.includes(level)) documentState.availableSupportLevels.push(level); } else { documentState.availableSupportLevels = documentState.availableSupportLevels.filter(l => l !== level); } renderPropertiesPanel(); } });
-    const propertiesContent = document.getElementById('properties-content'); propertiesContent.addEventListener('input', e => { if (e.target.classList.contains('property-input')) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvas(); } }); propertiesContent.addEventListener('change', e => { if (e.target.classList.contains('property-input') && e.target.tagName === 'SELECT') { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvas(); } });
+    const propertiesContent = document.getElementById('properties-content'); propertiesContent.addEventListener('input', e => { if (e.target.classList.contains('property-input')) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvasPanel(); } }); propertiesContent.addEventListener('change', e => { if (e.target.classList.contains('property-input') && e.target.tagName === 'SELECT') { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvasPanel(); } });
     const mediaFileInput = document.getElementById('media-file-input'); mediaFileInput.addEventListener('change', (e) => { const file = e.target.files[0]; if (file && selectedAtomId) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (atom && atom.type === 'media') { atom.content.src = URL.createObjectURL(file); atom.content.fileName = file.name; fullRender(); } } e.target.value = null; });
     propertiesContent.addEventListener('click', e => { if (e.target.classList.contains('glossary-term-list-item')) { const termId = e.target.dataset.glossaryId; const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom || !termId) return; const entry = (atom.glossaryEntries || []).find(ge => ge.id === termId); if (entry) { currentGlossaryContext.atomId = atom.id; currentGlossaryContext.entry = entry; currentGlossaryContext.selection = null; renderGlossaryModal(); openModal('glossary'); } return; } const button = e.target.closest('.icon-btn, button'); if (!button) { if (e.target.classList.contains('any-activity-checkbox')) { const card = e.target.closest('.rule-card'); const specificCheckboxes = card.querySelectorAll('.rule-activity-checkbox'); specificCheckboxes.forEach(cb => { cb.disabled = e.target.checked; if (e.target.checked) cb.checked = false; }); } else if (e.target.classList.contains('rule-activity-checkbox')) { const card = e.target.closest('.rule-card'); card.querySelector('.any-activity-checkbox').checked = false; } else if (e.target.classList.contains('check-all-support')) { const ruleCard = e.target.closest('.rule-card'); const checkboxes = ruleCard.querySelectorAll('.rule-input-checkbox'); checkboxes.forEach(cb => cb.checked = e.target.checked); } else if (e.target.classList.contains('rule-input-checkbox')) { const ruleCard = e.target.closest('.rule-card'); const allCheckboxes = ruleCard.querySelectorAll('.rule-input-checkbox'); const checkedCheckboxes = ruleCard.querySelectorAll('.rule-input-checkbox:checked'); ruleCard.querySelector('.check-all-support').checked = allCheckboxes.length === checkedCheckboxes.length; } return; } if(button.id === 'choose-image-btn') { mediaFileInput.click(); return; } if(button.classList.contains('edit-atom-metadata-btn')) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (atom) { currentMetadataContext = { type: 'atom', target: atom }; renderMetadataModal(); openModal('metadata'); } return; } if (button.id === 'add-glossary-term-btn') { const editor = tinymce.get('atom-text-editor'); if (!editor || editor.selection.getContent({format: 'text'}).length === 0) { alert("You must first select a word or phrase for the glossary entry."); return; } const selection = { start: editor.selection.getRng().startOffset, end: editor.selection.getRng().endOffset, text: editor.selection.getContent({format: 'text'}) }; const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; currentGlossaryContext.atomId = atom.id; currentGlossaryContext.selection = selection; const existingEntry = (atom.glossaryEntries || []).find(ge => ge.startOffset === selection.start && ge.endOffset === selection.end); currentGlossaryContext.entry = existingEntry || { id: generateUUID(), termText: selection.text, startOffset: selection.start, endOffset: selection.end, definitions: [] }; renderGlossaryModal(); openModal('glossary'); return; } const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; if (button.id === 'add-rule-btn') { atom.displayRules.push({ activityId: [], supportLevel: [], isEditing: true }); button.closest('.collapsible-section').classList.add('open'); fullRender(); } else if (button.id === 'delete-atom-btn') { if (confirm('Are you sure you want to delete this atom?')) { documentState.atoms = documentState.atoms.filter(a => a.id !== selectedAtomId); selectedAtomId = null; fullRender(); } } else { const ruleCard = button.closest('.rule-card'); if (!ruleCard) return; const ruleIndex = parseInt(ruleCard.dataset.ruleIndex, 10); const rule = atom.displayRules[ruleIndex]; if (button.classList.contains('edit-rule-btn')) { rule.isEditing = true; button.closest('.collapsible-section').classList.add('open'); fullRender(); } else if (button.classList.contains('save-rule-btn')) { const isAny = ruleCard.querySelector('.any-activity-checkbox').checked; rule.activityId = isAny ? [] : Array.from(ruleCard.querySelectorAll('.rule-activity-checkbox:checked')).map(cb => cb.value); const checkedLevels = Array.from(ruleCard.querySelectorAll('.rule-input-checkbox:checked')).map(cb => cb.dataset.level); rule.supportLevel = checkedLevels; delete rule.isEditing; fullRender(); } else if (button.classList.contains('delete-rule-btn')) { atom.displayRules.splice(ruleIndex, 1); fullRender(); } } });
     function openModal(type) { document.getElementById(`${type}-modal-overlay`).style.display = 'block'; document.getElementById(`${type}-modal-container`).style.display = 'flex'; }
@@ -672,31 +912,26 @@ document.addEventListener('DOMContentLoaded', () => {
     glossaryModalContainer.addEventListener('click', e => { const addBtn = e.target.closest('#add-definition-btn'); const removeBtn = e.target.closest('.delete-definition-btn'); if (addBtn) { currentGlossaryContext.entry.definitions.push({ partOfSpeech: 'noun', definitionText: '', displayRules: [{ activityId: '', supportLevel: [...documentState.availableSupportLevels] }] }); renderGlossaryModal(); } else if (removeBtn) { const card = removeBtn.closest('.definition-card'); const index = parseInt(card.dataset.defIndex, 10); currentGlossaryContext.entry.definitions.splice(index, 1); renderGlossaryModal(); } });
     document.getElementById('save-glossary-btn').addEventListener('click', () => { const atom = documentState.atoms.find(a => a.id === currentGlossaryContext.atomId); if (!atom) return; const { entry } = currentGlossaryContext; const newDefinitions = []; const defCards = document.querySelectorAll('#definitions-list .definition-card'); defCards.forEach(card => { const supportLevels = Array.from(card.querySelectorAll('.glossary-rule-input-checkbox:checked')).map(cb => cb.dataset.level); newDefinitions.push({ partOfSpeech: card.querySelector('[data-property="partOfSpeech"]').value, definitionText: card.querySelector('[data-property="definitionText"]').value, displayRules: [{ activityId: card.querySelector('[data-property="activityId"]').value, supportLevel: supportLevels }] }); }); entry.definitions = newDefinitions; if (!atom.glossaryEntries) { atom.glossaryEntries = []; } const existingIndex = atom.glossaryEntries.findIndex(ge => ge.id === entry.id); if (existingIndex > -1) { atom.glossaryEntries[existingIndex] = entry; } else { atom.glossaryEntries.push(entry); } closeModal('glossary'); fullRender(); });
     document.getElementById('cancel-glossary-btn').addEventListener('click', () => closeModal('glossary'));
-    const canvas = document.getElementById('canvas');
+    document.getElementById('apply-preview-filters-btn')?.addEventListener('click', () => {
+        const checkedActivities = Array.from(document.querySelectorAll('#preview-context-activities input:checked')).map(cb => cb.value);
+        const checkedSupports = Array.from(document.querySelectorAll('#preview-context-supports input:checked')).map(cb => cb.value);
+        previewContext.activityIds = checkedActivities;
+        previewContext.supportLevels = checkedSupports;
+        closeModal('preview-context');
+        renderPreviewCanvas();
+    });
+
+    const authorCanvas = document.getElementById('canvas'); // Get a reference once
     function getDragAfterElement(container, y) { const draggableElements = [...container.querySelectorAll('.atom:not(.dragging)')]; return draggableElements.reduce((closest, child) => { const box = child.getBoundingClientRect(); const offset = y - box.top - box.height / 2; if (offset < 0 && offset > closest.offset) { return { offset: offset, element: child }; } else { return closest; } }, { offset: Number.NEGATIVE_INFINITY }).element; }
-    canvas.addEventListener('dragstart', e => { if (e.target.classList.contains('atom')) { e.target.classList.add('dragging'); e.dataTransfer.setData('text/plain', e.target.dataset.atomId); e.dataTransfer.effectAllowed = 'move'; } });
-    canvas.addEventListener('dragend', e => { if (e.target.classList.contains('atom')) { e.target.classList.remove('dragging'); const indicator = canvas.querySelector('.drop-indicator'); if (indicator) indicator.style.display = 'none'; } });
-    canvas.addEventListener('dragover', e => { e.preventDefault(); const indicator = canvas.querySelector('.drop-indicator'); const afterElement = getDragAfterElement(canvas, e.clientY); if (indicator) { indicator.style.display = 'block'; if (afterElement) { indicator.style.top = `${afterElement.offsetTop - 8}px`; } else { const lastElement = canvas.querySelector('.atom:last-of-type:not(.dragging)'); if (lastElement) { indicator.style.top = `${lastElement.offsetTop + lastElement.offsetHeight}px`; } else { indicator.style.top = `24px`; } } } });
-    canvas.addEventListener('drop', e => { e.preventDefault(); const draggedAtomId = e.dataTransfer.getData('text/plain'); if (!draggedAtomId) return; const afterElement = getDragAfterElement(canvas, e.clientY); const afterAtomId = afterElement ? afterElement.dataset.atomId : null; const draggedAtomIndex = documentState.atoms.findIndex(a => a.id === draggedAtomId); if (draggedAtomIndex === -1) return; const [draggedAtom] = documentState.atoms.splice(draggedAtomIndex, 1); if (afterAtomId) { const dropIndex = documentState.atoms.findIndex(a => a.id === afterAtomId); documentState.atoms.splice(dropIndex, 0, draggedAtom); } else { documentState.atoms.push(draggedAtom); } fullRender(); });
+    canvasPanel.addEventListener('dragstart', e => { if (canvasMode === 'author' && e.target.classList.contains('atom')) { e.target.classList.add('dragging'); e.dataTransfer.setData('text/plain', e.target.dataset.atomId); e.dataTransfer.effectAllowed = 'move'; } });
+    canvasPanel.addEventListener('dragend', e => { if (canvasMode === 'author' && e.target.classList.contains('atom')) { e.target.classList.remove('dragging'); const indicator = canvasPanel.querySelector('.drop-indicator'); if (indicator) indicator.style.display = 'none'; } });
+    canvasPanel.addEventListener('dragover', e => { if (canvasMode !== 'author') return; e.preventDefault(); const canvas = document.getElementById('canvas'); const indicator = canvas.querySelector('.drop-indicator'); const afterElement = getDragAfterElement(canvas, e.clientY); if (indicator) { indicator.style.display = 'block'; if (afterElement) { indicator.style.top = `${afterElement.offsetTop - 8}px`; } else { const lastElement = canvas.querySelector('.atom:last-of-type:not(.dragging)'); if (lastElement) { indicator.style.top = `${lastElement.offsetTop + lastElement.offsetHeight}px`; } else { indicator.style.top = `24px`; } } } });
+    canvasPanel.addEventListener('drop', e => { if (canvasMode !== 'author') return; e.preventDefault(); const canvas = document.getElementById('canvas'); const draggedAtomId = e.dataTransfer.getData('text/plain'); if (!draggedAtomId) return; const afterElement = getDragAfterElement(canvas, e.clientY); const afterAtomId = afterElement ? afterElement.dataset.atomId : null; const draggedAtomIndex = documentState.atoms.findIndex(a => a.id === draggedAtomId); if (draggedAtomIndex === -1) return; const [draggedAtom] = documentState.atoms.splice(draggedAtomIndex, 1); if (afterAtomId) { const dropIndex = documentState.atoms.findIndex(a => a.id === afterAtomId); documentState.atoms.splice(dropIndex, 0, draggedAtom); } else { documentState.atoms.push(draggedAtom); } fullRender(); });
     
     // --- INITIALIZATION ---
     async function initializeApp() {
         document.getElementById('version-display').textContent = APP_VERSION;
         
-        const atomTypeSelect = document.getElementById('add-atom-type');
-        const atomTypes = [
-            { value: 'annotation-cue', text: 'Annotation Cue' },
-            { value: 'author', text: 'Author' },
-            { value: 'heading', text: 'Heading' },
-            { value: 'interactive', text: 'Interactive' },
-            { value: 'learnosity', text: 'Learnosity' },
-            { value: 'media', text: 'Media' },
-            { value: 'numbered-paragraph', text: 'Numbered Paragraph' },
-            { value: 'paragraph', text: 'Paragraph' },
-            { value: 'title', text: 'Title' }
-        ];
-        atomTypeSelect.innerHTML = atomTypes.map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('');
-
         try {
             const response = await fetch('manifest.json');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -707,7 +942,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         processManifest();
         
-        // Add event listener for the new collapsible handle
         document.querySelector('[data-panel-id="document-panel"]').addEventListener('click', togglePanelCollapse);
 
         fullRender();
