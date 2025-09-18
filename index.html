@@ -549,7 +549,7 @@
 <script id="main-script">
 document.addEventListener('DOMContentLoaded', () => {
     
-    const APP_VERSION = "rc1.beta.0.31";
+    const APP_VERSION = "rc1.beta.0.32";
 
     // --- MANIFEST & DATABASE SIMULATION ---
     let manifest = {};
@@ -668,10 +668,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         renderCanvasContent(document.getElementById('canvas'), false);
-        
-        document.getElementById('add-atom-btn').addEventListener('click', addAtom);
-        document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
-        document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
         const atomTypeSelect = document.getElementById('add-atom-type');
         const atomTypes = [ { value: 'annotation-cue', text: 'Annotation Cue' }, { value: 'author', text: 'Author' }, { value: 'heading', text: 'Heading' }, { value: 'interactive', text: 'Interactive' }, { value: 'learnosity', text: 'Learnosity' }, { value: 'media', text: 'Media' }, { value: 'numbered-paragraph', text: 'Numbered Paragraph' }, { value: 'paragraph', text: 'Paragraph' }, { value: 'title', text: 'Title' } ];
         atomTypeSelect.innerHTML = atomTypes.map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('');
@@ -687,18 +683,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button id="set-display-criteria-btn">Set Display Criteria</button>
             </div>
             <div id="preview-canvas" class="panel-content">
-                 <!-- Preview content will be rendered here -->
             </div>
         `;
-
         renderCanvasContent(document.getElementById('preview-canvas'), true);
-        
-        document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
-        document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
-        document.getElementById('set-display-criteria-btn').addEventListener('click', () => {
-            renderDisplayCriteriaModal();
-            openModal('display-criteria');
-        });
     }
 
     function renderCanvasContent(canvasEl, isPreview) {
@@ -707,7 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let numberedParagraphCounter = 1; 
 
         const atomsToRender = isPreview 
-            ? documentState.atoms.filter(atom => checkAtomVisibility(atom))
+            ? documentState.atoms.filter(checkAtomVisibility)
             : documentState.atoms;
 
         atomsToRender.forEach(atom => {
@@ -729,9 +716,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'title': const titleMeta = documentState.metadata.find(m => m.key === 'Title')?.value || '[Title]'; content = `<h1 class="title-atom">${titleMeta}</h1>`; atomEl.innerHTML = content; break;
                 case 'author': const authorMeta = documentState.metadata.find(m => m.key === 'Author')?.value || '[Author]'; const dateMeta = documentState.metadata.find(m => m.key === 'Publication Date')?.value; const year = dateMeta ? `, ${new Date(dateMeta).getFullYear() + 1}` : ''; content = `<p class="author-atom">by ${authorMeta}${year}</p>`; atomEl.innerHTML = content; break;
                 case 'numbered-paragraph': 
-                    if (atom.type === 'numbered-paragraph') {
-                        const paraText = textWithGlossary || '<p><em style="color:#999;">Empty paragraph...</em></p>'; atomEl.innerHTML = `<div class="numbered-paragraph-atom"><span class="paragraph-number">${numberedParagraphCounter++}</span><div class="paragraph-text">${paraText}</div></div>`; 
-                    }
+                    const paraText = textWithGlossary || '<p><em style="color:#999;">Empty paragraph...</em></p>'; 
+                    atomEl.innerHTML = `<div class="numbered-paragraph-atom"><span class="paragraph-number">${numberedParagraphCounter++}</span><div class="paragraph-text">${paraText}</div></div>`; 
                     break;
                 case 'paragraph': const paragraphText = textWithGlossary || '<p><em style="color:#999;">Empty paragraph...</em></p>'; atomEl.innerHTML = `<div class="atom-content">${paragraphText}</div>`; break;
                 case 'heading': const headingText = textWithGlossary || '<h2><em style="color:#999;">Empty heading...</em></h2>'; atomEl.innerHTML = `<div class="atom-content heading-atom">${headingText}</div>`; break;
@@ -792,7 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (canvasMode === mode) return;
         canvasMode = mode;
         if (mode === 'preview') {
-            selectedAtomId = null; // Deselect atom when leaving author mode
+            selectedAtomId = null; 
         }
         fullRender();
     }
@@ -800,13 +786,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function addAtom() {
         const type = document.getElementById('add-atom-type').value;
         const newAtom = {
-            id: generateUUID(),
-            type: type,
-            displayRules: [{ activityId: [], supportLevel: [...documentState.availableSupportLevels], isEditing: false }],
-            metadata: [],
-            glossaryEntries: []
+            id: generateUUID(), type: type, displayRules: [], 
+            metadata: [], glossaryEntries: [], content: { text: '' }
         };
-        newAtom.content = { text: '' };
         documentState.atoms.push(newAtom);
         selectedAtomId = newAtom.id;
         fullRender(true);
@@ -827,12 +809,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (previewContext.activityIds.length > 0 && previewContext.supportLevels.length > 0) {
                 return activityMatch && supportMatch;
             }
-            if (previewContext.activityIds.length > 0) {
-                return activityMatch;
-            }
-            if (previewContext.supportLevels.length > 0) {
-                return supportMatch;
-            }
+            if (previewContext.activityIds.length > 0) return activityMatch;
+            if (previewContext.supportLevels.length > 0) return supportMatch;
             return false;
         });
     }
@@ -861,15 +839,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- EVENT LISTENERS ---
-    canvasPanel.addEventListener('click', (e) => { 
-        if (canvasMode === 'author') {
-            const atomEl = e.target.closest('.atom'); 
-            if (atomEl) { 
-                selectedAtomId = atomEl.dataset.atomId; 
-                fullRender(); 
-            }
+    canvasPanel.addEventListener('click', e => {
+        const target = e.target;
+        if (target.id === 'author-mode-btn') { setCanvasMode('author'); }
+        else if (target.id === 'preview-mode-btn') { setCanvasMode('preview'); }
+        else if (target.id === 'set-display-criteria-btn') { renderDisplayCriteriaModal(); openModal('display-criteria'); }
+        else if (target.id === 'add-atom-btn') { addAtom(); }
+        else if (canvasMode === 'author') {
+            const atomEl = target.closest('.atom');
+            if (atomEl) { selectedAtomId = atomEl.dataset.atomId; fullRender(); }
         }
     });
+
     document.getElementById('support-levels-list').addEventListener('change', e => { if (e.target.type === 'checkbox') { const level = e.target.dataset.level; if (e.target.checked) { if (!documentState.availableSupportLevels.includes(level)) documentState.availableSupportLevels.push(level); } else { documentState.availableSupportLevels = documentState.availableSupportLevels.filter(l => l !== level); } renderPropertiesPanel(); } });
     const propertiesContent = document.getElementById('properties-content'); propertiesContent.addEventListener('input', e => { if (e.target.classList.contains('property-input')) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvasPanel(); } }); propertiesContent.addEventListener('change', e => { if (e.target.classList.contains('property-input') && e.target.tagName === 'SELECT') { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; atom.content[e.target.dataset.property] = e.target.value; renderCanvasPanel(); } });
     const mediaFileInput = document.getElementById('media-file-input'); mediaFileInput.addEventListener('change', (e) => { const file = e.target.files[0]; if (file && selectedAtomId) { const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (atom && atom.type === 'media') { atom.content.src = URL.createObjectURL(file); atom.content.fileName = file.name; fullRender(); } } e.target.value = null; });
