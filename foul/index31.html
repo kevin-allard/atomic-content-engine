@@ -523,11 +523,11 @@
     <div id="glossary-modal-overlay" class="modal-overlay"></div>
     <div id="glossary-modal-container" class="modal-container"><div class="modal-header"><h3>Glossary Entry Editor</h3><button class="modal-close-btn" data-modal="glossary">&times;</button></div><div class="modal-content" style="padding: 24px;"><div class="form-group"><label>Term</label><input type="text" id="glossary-term-text" readonly></div><hr><div id="definitions-list"></div><button id="add-definition-btn">Add Definition</button></div><div class="modal-footer"><button id="cancel-glossary-btn">Cancel</button><button id="save-glossary-btn" class="primary">Save Entry</button></div></div>
     
-    <div id="display-criteria-modal-overlay" class="modal-overlay"></div>
-    <div id="display-criteria-modal-container" class="modal-container">
+    <div id="preview-context-modal-overlay" class="modal-overlay"></div>
+    <div id="preview-context-modal-container" class="modal-container">
         <div class="modal-header">
-            <h3>Set Display Criteria</h3>
-            <button class="modal-close-btn" data-modal="display-criteria">&times;</button>
+            <h3>Set Preview Context</h3>
+            <button class="modal-close-btn" data-modal="preview-context">&times;</button>
         </div>
         <div class="modal-content" style="padding: 24px;">
             <div class="modal-grid">
@@ -542,7 +542,7 @@
             </div>
         </div>
         <div class="modal-footer">
-             <button id="apply-display-filters-btn" class="primary">Apply Filters</button>
+             <button id="apply-preview-filters-btn" class="primary">Apply Filters</button>
         </div>
     </div>
 
@@ -669,12 +669,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderCanvasContent(document.getElementById('canvas'), false);
         
+        // Re-attach event listeners for author mode
         document.getElementById('add-atom-btn').addEventListener('click', addAtom);
         document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
         document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
         const atomTypeSelect = document.getElementById('add-atom-type');
         const atomTypes = [ { value: 'annotation-cue', text: 'Annotation Cue' }, { value: 'author', text: 'Author' }, { value: 'heading', text: 'Heading' }, { value: 'interactive', text: 'Interactive' }, { value: 'learnosity', text: 'Learnosity' }, { value: 'media', text: 'Media' }, { value: 'numbered-paragraph', text: 'Numbered Paragraph' }, { value: 'paragraph', text: 'Paragraph' }, { value: 'title', text: 'Title' } ];
         atomTypeSelect.innerHTML = atomTypes.map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('');
+
     }
     
     function renderPreviewCanvas() {
@@ -684,7 +686,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button id="author-mode-btn" class="view-toggle-btn">Author</button>
                     <button id="preview-mode-btn" class="view-toggle-btn active">Preview</button>
                 </div>
-                <button id="set-display-criteria-btn">Set Display Criteria</button>
+                <button id="set-preview-context-btn">Set Preview Context</button>
             </div>
             <div id="preview-canvas" class="panel-content">
                  <!-- Preview content will be rendered here -->
@@ -693,11 +695,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderCanvasContent(document.getElementById('preview-canvas'), true);
         
+        // Re-attach event listeners for preview mode
         document.getElementById('author-mode-btn').addEventListener('click', () => setCanvasMode('author'));
         document.getElementById('preview-mode-btn').addEventListener('click', () => setCanvasMode('preview'));
-        document.getElementById('set-display-criteria-btn').addEventListener('click', () => {
-            renderDisplayCriteriaModal();
-            openModal('display-criteria');
+        document.getElementById('set-preview-context-btn').addEventListener('click', () => {
+            renderPreviewContextModal();
+            openModal('preview-context');
         });
     }
 
@@ -707,7 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let numberedParagraphCounter = 1; 
 
         const atomsToRender = isPreview 
-            ? documentState.atoms.filter(atom => checkAtomVisibility(atom))
+            ? documentState.atoms.filter(atom => checkAtomVisibility(atom, previewContext))
             : documentState.atoms;
 
         atomsToRender.forEach(atom => {
@@ -749,6 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
             canvasEl.appendChild(atomEl);
         });
         
+        // This is a bit inefficient to run every render, but ensures paragraph numbers are correct in preview
         if (isPreview) {
             let previewCounter = 1;
             canvasEl.querySelectorAll('.numbered-paragraph-atom .paragraph-number').forEach(numEl => {
@@ -812,32 +816,34 @@ document.addEventListener('DOMContentLoaded', () => {
         fullRender(true);
     }
     
-    function checkAtomVisibility(atom) {
+    function checkAtomVisibility(atom, context) {
         if (!atom.displayRules || atom.displayRules.length === 0) {
-            return true;
+            return true; // No rules means always visible
         }
-        if (previewContext.activityIds.length === 0 && previewContext.supportLevels.length === 0) {
-            return false;
-        }
+
+        // Atom is visible if ANY of its rules match the current context
         return atom.displayRules.some(rule => {
             const ruleActivities = rule.activityId || [];
             const ruleSupports = rule.supportLevel || [];
-            const activityMatch = ruleActivities.length === 0 || ruleActivities.some(id => previewContext.activityIds.includes(id));
-            const supportMatch = ruleSupports.length === 0 || ruleSupports.some(level => previewContext.supportLevels.includes(level));
-            if (previewContext.activityIds.length > 0 && previewContext.supportLevels.length > 0) {
-                return activityMatch && supportMatch;
+
+            // Activity check
+            const activityMatch = ruleActivities.length === 0 || // Rule is for "Any Linked Activity"
+                                  ruleActivities.some(actId => context.activityIds.includes(actId)); // At least one rule activity is in the context
+            
+            // Support Level check
+            const supportMatch = ruleSupports.length === 0 || // Rule is for "All Support Levels"
+                                 ruleSupports.some(sup => context.supportLevels.includes(sup)); // At least one rule support is in the context
+            
+            // If context is empty, only show universal content
+            if (context.activityIds.length === 0 && context.supportLevels.length === 0) {
+                return ruleActivities.length === 0 && ruleSupports.length === 0;
             }
-            if (previewContext.activityIds.length > 0) {
-                return activityMatch;
-            }
-            if (previewContext.supportLevels.length > 0) {
-                return supportMatch;
-            }
-            return false;
+
+            return activityMatch && supportMatch;
         });
     }
-
-    function renderDisplayCriteriaModal() {
+    
+    function renderPreviewContextModal() {
         const activitiesContainer = document.getElementById('preview-context-activities');
         const supportsContainer = document.getElementById('preview-context-supports');
         activitiesContainer.innerHTML = '';
@@ -850,9 +856,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 activitiesContainer.innerHTML += `<label><input type="checkbox" value="${id}" ${isChecked ? 'checked' : ''}> ${activity.name}</label>`;
             }
         });
-        if (documentState.linkedActivityIds.length === 0) {
-            activitiesContainer.innerHTML = `<p style="font-size: 0.9em; color: var(--text-color-secondary);">No activities linked to this document.</p>`;
-        }
         
         documentState.availableSupportLevels.forEach(level => {
             const isChecked = previewContext.supportLevels.includes(level);
@@ -909,15 +912,17 @@ document.addEventListener('DOMContentLoaded', () => {
     glossaryModalContainer.addEventListener('click', e => { const addBtn = e.target.closest('#add-definition-btn'); const removeBtn = e.target.closest('.delete-definition-btn'); if (addBtn) { currentGlossaryContext.entry.definitions.push({ partOfSpeech: 'noun', definitionText: '', displayRules: [{ activityId: '', supportLevel: [...documentState.availableSupportLevels] }] }); renderGlossaryModal(); } else if (removeBtn) { const card = removeBtn.closest('.definition-card'); const index = parseInt(card.dataset.defIndex, 10); currentGlossaryContext.entry.definitions.splice(index, 1); renderGlossaryModal(); } });
     document.getElementById('save-glossary-btn').addEventListener('click', () => { const atom = documentState.atoms.find(a => a.id === currentGlossaryContext.atomId); if (!atom) return; const { entry } = currentGlossaryContext; const newDefinitions = []; const defCards = document.querySelectorAll('#definitions-list .definition-card'); defCards.forEach(card => { const supportLevels = Array.from(card.querySelectorAll('.glossary-rule-input-checkbox:checked')).map(cb => cb.dataset.level); newDefinitions.push({ partOfSpeech: card.querySelector('[data-property="partOfSpeech"]').value, definitionText: card.querySelector('[data-property="definitionText"]').value, displayRules: [{ activityId: card.querySelector('[data-property="activityId"]').value, supportLevel: supportLevels }] }); }); entry.definitions = newDefinitions; if (!atom.glossaryEntries) { atom.glossaryEntries = []; } const existingIndex = atom.glossaryEntries.findIndex(ge => ge.id === entry.id); if (existingIndex > -1) { atom.glossaryEntries[existingIndex] = entry; } else { atom.glossaryEntries.push(entry); } closeModal('glossary'); fullRender(); });
     document.getElementById('cancel-glossary-btn').addEventListener('click', () => closeModal('glossary'));
-    document.getElementById('apply-display-filters-btn')?.addEventListener('click', () => {
+    document.getElementById('apply-preview-filters-btn')?.addEventListener('click', () => {
         const checkedActivities = Array.from(document.querySelectorAll('#preview-context-activities input:checked')).map(cb => cb.value);
         const checkedSupports = Array.from(document.querySelectorAll('#preview-context-supports input:checked')).map(cb => cb.value);
         previewContext.activityIds = checkedActivities;
         previewContext.supportLevels = checkedSupports;
-        closeModal('display-criteria');
+        closeModal('preview-context');
         renderPreviewCanvas();
     });
 
+    const authorCanvas = document.getElementById('canvas'); // Get a reference once
+    function getDragAfterElement(container, y) { const draggableElements = [...container.querySelectorAll('.atom:not(.dragging)')]; return draggableElements.reduce((closest, child) => { const box = child.getBoundingClientRect(); const offset = y - box.top - box.height / 2; if (offset < 0 && offset > closest.offset) { return { offset: offset, element: child }; } else { return closest; } }, { offset: Number.NEGATIVE_INFINITY }).element; }
     canvasPanel.addEventListener('dragstart', e => { if (canvasMode === 'author' && e.target.classList.contains('atom')) { e.target.classList.add('dragging'); e.dataTransfer.setData('text/plain', e.target.dataset.atomId); e.dataTransfer.effectAllowed = 'move'; } });
     canvasPanel.addEventListener('dragend', e => { if (canvasMode === 'author' && e.target.classList.contains('atom')) { e.target.classList.remove('dragging'); const indicator = canvasPanel.querySelector('.drop-indicator'); if (indicator) indicator.style.display = 'none'; } });
     canvasPanel.addEventListener('dragover', e => { if (canvasMode !== 'author') return; e.preventDefault(); const canvas = document.getElementById('canvas'); const indicator = canvas.querySelector('.drop-indicator'); const afterElement = getDragAfterElement(canvas, e.clientY); if (indicator) { indicator.style.display = 'block'; if (afterElement) { indicator.style.top = `${afterElement.offsetTop - 8}px`; } else { const lastElement = canvas.querySelector('.atom:last-of-type:not(.dragging)'); if (lastElement) { indicator.style.top = `${lastElement.offsetTop + lastElement.offsetHeight}px`; } else { indicator.style.top = `24px`; } } } });
