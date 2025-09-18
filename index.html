@@ -155,48 +155,112 @@
              transform: rotate(-90deg);
         }
         
-        /* ... (rest of CSS is identical to previous version, omitted for brevity) ... */
+        #canvas { padding: 24px; }
+        .atom {
+            padding: 0;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            cursor: grab;
+            position: relative;
+        }
+        .atom.dragging { opacity: 0.5; }
+        .atom:hover { border-color: #c5cae9; }
+        .atom.selected { border-color: var(--primary-color); }
+        .atom-content { padding: 16px; background-color: var(--panel-bg); }
+        .atom img { max-width: 100%; display: block; border-radius: 4px; }
+        .atom-placeholder { padding: 24px; border-radius: 4px; font-weight: 500; color: white; text-align: center; font-size: 14px; }
+        .atom-placeholder.interactive { background-color: #2196F3; }
+        .atom-placeholder.media { background-color: #9C27B0; }
+        .atom-placeholder.learnosity { background-color: #009688; }
+        .atom .conditional-badge { position: absolute; top: 8px; right: 8px; background-color: var(--accent-color); color: white; font-size: 11px; padding: 2px 6px; border-radius: 10px; font-weight: 500; cursor: help; z-index: 10; }
+        .drop-indicator { height: 4px; background-color: var(--accent-color); border-radius: 2px; display: none; position: absolute; width: calc(100% - 48px); pointer-events: none; z-index: 20; transition: top 0.1s ease-out, opacity 0.1s ease-out; }
+        .title-atom { font-size: 34px; font-weight: 700; line-height: 40px; margin: 0 0 8px 0; }
+        .author-atom { font-size: 16px; color: var(--text-color-primary); margin: 0 0 24px 0; }
+        .numbered-paragraph-atom { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px !important; }
+        .paragraph-number { font-size: 12px; color: var(--text-color-secondary); width: 20px; text-align: right; flex-shrink: 0; padding-top: 4px; }
+        .paragraph-text { margin: 0; line-height: 1.5; }
+        .heading-atom { font-size: 24px; font-weight: 500; margin-bottom: 16px; }
+        .glossary-term-canvas { color: var(--primary-color); font-weight: 700; cursor: help; }
+        .annotation-cue-container { border: 1px solid var(--annotation-cue-color); border-radius: 8px; padding: 16px; display: flex; gap: 12px; }
+        .cue-play-icon { flex-shrink: 0; margin-top: 2px; }
+        .cue-play-icon svg { width: 24px; height: 24px; color: var(--annotation-cue-color); }
+        .cue-content-wrapper { flex-grow: 1; }
+        .cue-header { display: flex; align-items: center; gap: 8px; color: var(--annotation-cue-color); font-weight: 500; margin-bottom: 8px; }
+        .cue-header svg { width: 18px; height: 18px; }
+        .cue-body { color: var(--text-color-secondary); }
+        .activity-item { padding: 8px; border-bottom: 1px solid var(--border-color); }
+        
+        button { padding: 8px 16px; border: none; border-radius: 4px; background-color: rgba(0,0,0,0.05); cursor: pointer; font-size: 14px; font-weight: 500; text-transform: uppercase; transition: box-shadow 0.2s ease, background-color 0.2s ease; }
+        button:hover { background-color: rgba(0,0,0,0.08); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        button:disabled { cursor: not-allowed; background-color: rgba(0,0,0,0.12); color: var(--text-color-hint); box-shadow: none; }
+        button.primary { background-color: var(--primary-color); color: white; }
+        button.primary:hover { background-color: var(--primary-hover); box-shadow: 0 2px 4px rgba(0,0,0,0.25); }
+        select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--panel-bg); font-size: 14px; }
+        .form-group { margin-bottom: 16px; position: relative; }
+        .form-group label { display: block; font-weight: 500; color: var(--text-color-secondary); margin-bottom: 8px; font-size: 14px; }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 14px; }
+        .form-group input[readonly] { background-color: var(--bg-color); color: var(--text-color-secondary); }
+        .checkbox-group label { display: flex; align-items: center; margin-bottom: 8px; font-weight: normal; font-size: 14px; }
+        .checkbox-group input { width: auto; margin-right: 8px; }
+        .rule-card { background: var(--bg-color); padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 8px; }
+        .rule-card-header { display: flex; justify-content: space-between; align-items: center; }
+        .rule-card-header .title { font-weight: 500; font-size: 14px; }
+        .rule-card-header .actions { display: flex; gap: 8px; }
+        .icon-btn { background: none; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; width: 28px; height: 28px; color: var(--text-color-secondary);}
+        .icon-btn:hover { background-color: rgba(0,0,0,0.1); color: var(--text-color-primary); }
+        .icon-btn.delete:hover { color: var(--danger-color); }
+        .icon-btn svg { width: 20px; height: 20px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 999; display: none; }
+        .modal-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--panel-bg); z-index: 1000; border-radius: 4px; box-shadow: 0 11px 15px -7px rgba(0,0,0,0.2), 0 24px 38px 3px rgba(0,0,0,0.14), 0 9px 46px 8px rgba(0,0,0,0.12); width: 90%; max-width: 500px; display: none; flex-direction: column; max-height: 80vh; }
+        .modal-container.large { max-width: 700px; height: 70vh; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--border-color); }
+        .modal-header h3 { margin: 0; font-weight: 500; font-size: 20px; }
+        .modal-close-btn { font-size: 24px; font-weight: bold; color: var(--text-color-secondary); cursor: pointer; background: none; border: none; }
+        .modal-content { padding: 0; overflow-y: auto; flex-grow: 1; }
+        .modal-footer { padding: 8px 16px; border-top: 1px solid var(--border-color); text-align: right; }
+        .modal-tabs { display: flex; border-bottom: 1px solid var(--border-color); padding: 0 16px; }
+        .modal-tab-btn { flex: 1; padding: 12px; border: none; background: none; font-size: 14px; font-weight: 500; color: var(--text-color-secondary); cursor: pointer; border-bottom: 2px solid transparent; }
+        .modal-tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+        .modal-tab-content { display: none; padding: 24px; }
+        .modal-tab-content.active { display: block; }
 
-        /* New Preview Mode Styles */
-        .preview-controls {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border-color);
-            background-color: #fafafa;
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        #preview-canvas {
-            padding: 24px;
-        }
-        #preview-canvas .atom {
-             border: 2px solid transparent !important;
-             cursor: default;
-        }
-        #preview-canvas .atom:hover {
-             border-color: transparent !important;
-        }
-        .view-toggle-container {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .view-toggle-btn {
-            background: none;
-            border: 1px solid var(--border-color);
-            padding: 6px 12px;
-            font-size: 13px;
-            font-weight: 500;
-            border-radius: 16px;
-            cursor: pointer;
-        }
-        .view-toggle-btn.active {
-            background-color: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-        }
+        #json-output { width: 100%; height: 100%; font-family: monospace; font-size: 13px; border: 1px solid var(--border-color); border-radius: 4px; resize: none; }
+        #activity-link-list { list-style-type: none; padding: 0; margin: 0; }
+        #activity-link-list li { padding: 8px 0; border-bottom: 1px solid #eee; }
+        .property-preview-image { max-width: 100%; border-radius: 4px; border: 1px solid var(--border-color); margin-top: 8px; }
+        .collapsible-section { border-bottom: 1px solid var(--border-color); margin-bottom: 16px; padding-bottom: 16px; }
+        .collapsible-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .collapsible-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 4px 0; }
+        .collapsible-header h4, .collapsible-header h5 { margin: 0; font-size: 16px; font-weight: 500; }
+        .collapsible-toggle-icon { transition: transform 0.2s ease-in-out; color: var(--text-color-secondary); width: 24px; height: 24px; }
+        .collapsible-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out, margin-top 0.3s ease-out; margin-top: 0; }
+        .collapsible-section.open > .collapsible-content { max-height: 1000px; margin-top: 16px; }
+        .collapsible-section.open > .collapsible-header .collapsible-toggle-icon { transform: rotate(180deg); }
+        .metadata-section h5 { margin-top: 0; margin-bottom: 8px; color: var(--primary-color); font-size: 14px; font-weight: 500; }
+        .genre-tags { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; min-height: 38px; }
+        .genre-tag { background-color: var(--primary-color); color: white; padding: 3px 8px; border-radius: 16px; font-size: 12px; }
+        .metadata-display-list { font-size: 14px; line-height: 1.6; color: var(--text-color-primary); }
+        .metadata-display-list dt { font-weight: 500; }
+        .metadata-display-list dd { margin-left: 16px; margin-bottom: 8px; color: var(--text-color-secondary); }
+        .activity-filters { display: flex; gap: 16px; }
+        .template-card { border: 1px solid var(--border-color); border-radius: 4px; padding: 16px; margin-bottom: 16px; }
+        .template-card h5 { margin-top: 0; font-size: 16px; }
+        .template-card .template-fields-list { list-style-type: none; padding-left: 16px; margin: 0; }
+        .definition-card { background: var(--bg-color); padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 12px; }
+        .glossary-term-list-container { margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 16px; }
+        .glossary-term-list-container h5 { margin: 0 0 8px 0; font-size: 14px; color: var(--text-color-secondary); }
+        .glossary-term-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .glossary-term-list-item { background-color: var(--active-context-bg); color: var(--primary-color); padding: 4px 10px; border-radius: 16px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--primary-color); transition: background-color 0.2s ease; }
+        .glossary-term-list-item:hover { background-color: var(--primary-color); color: white; }
 
+        .preview-controls { padding: 12px 16px; border-bottom: 1px solid var(--border-color); background-color: #fafafa; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        #preview-canvas { padding: 24px; }
+        #preview-canvas .atom { border: 2px solid transparent !important; cursor: default; }
+        #preview-canvas .atom:hover { border-color: transparent !important; }
+        .view-toggle-container { display: flex; align-items: center; gap: 8px; margin-right: auto; }
+        .view-toggle-btn { background: none; border: 1px solid var(--border-color); padding: 6px 12px; font-size: 13px; font-weight: 500; border-radius: 16px; cursor: pointer; }
+        .view-toggle-btn.active { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
     </style>
 </head>
 <body>
@@ -214,5 +278,39 @@
     <div class="editor-container" id="editor-container">
         <!-- Panels will be rendered here by JS -->
     </div>
+    
+    <!-- Modals and hidden inputs are placed outside the main container -->
+    <div id="modal-container-storage">
+         <div id="json-modal-overlay" class="modal-overlay"></div>
+         <div id="json-modal-container" class="modal-container large">
+            <div class="modal-header"><h3>Document JSON Output</h3><button class="modal-close-btn" data-modal="json">&times;</button></div>
+            <div class="modal-content"><textarea id="json-output"></textarea></div>
+            <div class="modal-footer"><button id="save-json-btn" class="primary">Save to Computer</button></div>
+        </div>
+        <div id="activity-modal-overlay" class="modal-overlay"></div>
+        <div id="activity-modal-container" class="modal-container">
+            <div class="modal-header"><h3>Link Activities</h3><button class="modal-close-btn" data-modal="activity">&times;</button></div>
+            <div class="modal-content" style="padding: 24px;">
+                <div style="padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color);"><div class="form-group" style="margin-bottom: 8px;"><label for="new-activity-name-modal">Create New Activity</label><input type="text" id="new-activity-name-modal" placeholder="Enter new activity name..."></div><button id="create-link-activity-btn" disabled>Create & Link (Select Grade/Unit)</button></div>
+                <div class="activity-filters"><div class="form-group" style="flex:1;"><label for="activity-grade-filter">Grade</label><select id="activity-grade-filter"></select></div><div class="form-group" style="flex:2;"><label for="activity-unit-filter">Unit</label><select id="activity-unit-filter"></select></div></div>
+                <input type="text" id="activity-search" placeholder="Search activities in selected unit..." style="margin-bottom: 1rem; width: 100%;"><ul id="activity-link-list"></ul>
+            </div>
+            <div class="modal-footer"><button id="cancel-link-activity-btn">Cancel</button><button id="save-link-activity-btn" class="primary">Save Links</button></div>
+        </div>
+        <div id="metadata-modal-overlay" class="modal-overlay"></div>
+        <div id="metadata-modal-container" class="modal-container">
+            <div class="modal-header"><h3 id="metadata-modal-title">Associate Metadata</h3><button class="modal-close-btn" data-modal="metadata">&times;</button></div>
+            <div class="modal-tabs"><button class="modal-tab-btn active" data-tab="search">Search</button><button class="modal-tab-btn" data-tab="templates">Templates</button></div>
+            <div class="modal-content"><div id="metadata-tab-search" class="modal-tab-content active"><input type="text" id="metadata-search" placeholder="Search associated metadata..." style="margin-bottom: 1rem; width: 100%;"><div class="metadata-section"><h5>Metadata</h5><div id="associated-metadata-list"></div></div><div class="metadata-section" style="margin-top: 1.5rem;"><h5>Available Associations</h5><div id="available-associations-list" class="checkbox-group"></div><button id="add-selected-associations-btn" style="margin-top: 1rem;">Add Selected</button></div></div><div id="metadata-tab-templates" class="modal-tab-content"></div></div>
+            <div class="modal-footer"><button id="save-metadata-btn" class="primary">Save Metadata</button></div>
+        </div>
+        <div id="genre-modal-overlay" class="modal-overlay" style="z-index: 1001;"></div>
+        <div id="genre-modal-container" class="modal-container" style="z-index: 1002; max-width: 400px; max-height: 60vh;"><div class="modal-header"><h3>Select Genres</h3><button class="modal-close-btn" data-modal="genre">&times;</button></div><div class="modal-content checkbox-group" id="genre-selection-list" style="padding: 24px;"></div><div class="modal-footer"><button id="cancel-genre-btn">Cancel</button><button id="save-genre-btn" class="primary">Save Genres</button></div></div>
+        <div id="glossary-modal-overlay" class="modal-overlay"></div>
+        <div id="glossary-modal-container" class="modal-container"><div class="modal-header"><h3>Glossary Entry Editor</h3><button class="modal-close-btn" data-modal="glossary">&times;</button></div><div class="modal-content" style="padding: 24px;"><div class="form-group"><label>Term</label><input type="text" id="glossary-term-text" readonly></div><hr><div id="definitions-list"></div><button id="add-definition-btn">Add Definition</button></div><div class="modal-footer"><button id="cancel-glossary-btn">Cancel</button><button id="save-glossary-btn" class="primary">Save Entry</button></div></div>
+    </div>
+    
+    <input type="file" id="media-file-input" accept="image/*" style="display: none;">
+    <input type="file" id="json-file-input" accept=".json,application/json" style="display: none;">
 </body>
 </html>
