@@ -780,9 +780,86 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderPropertiesPanel(isNewAtom = false) { const propertiesContent = document.getElementById('properties-content'); if (activeEditorInstance) { tinymce.get(activeEditorInstance.id)?.remove(); activeEditorInstance = null; } const relationshipsPanel = document.getElementById('relationships-section'); const openStates = {}; propertiesContent.querySelectorAll('.collapsible-section[data-section-id]').forEach(section => { if (section.classList.contains('open')) { openStates[section.dataset.sectionId] = true; } }); if (!selectedAtomId) { propertiesContent.innerHTML = '<p>Select an atom to see its properties.</p>'; relationshipsPanel.classList.remove('is-active-context'); return; } if (isNewAtom) { openStates['core'] = true; } relationshipsPanel.classList.add('is-active-context'); const atom = documentState.atoms.find(a => a.id === selectedAtomId); if (!atom) return; let contentHtml = ''; let glossaryListHtml = ''; if (atom.glossaryEntries && atom.glossaryEntries.length > 0) { const listItems = atom.glossaryEntries.sort((a, b) => a.termText.localeCompare(b.termText)).map(entry => `<span class="glossary-term-list-item" data-glossary-id="${entry.id}">${entry.termText}</span>`).join(''); glossaryListHtml = `<div class="glossary-term-list-container"><h5>Defined Terms</h5><div class="glossary-term-list">${listItems}</div></div>`; } switch(atom.type) { case 'title': contentHtml = `<p style="font-size:0.9em; color:var(--text-color-secondary)">This atom displays the Document's Title metadata. Edit this in Document Properties &gt; Metadata.</p>`; break; case 'author': contentHtml = `<p style="font-size:0.9em; color:var(--text-color-secondary)">This atom displays the Document's Author and Publication Date metadata. Edit this in Document Properties &gt; Metadata.</p>`; break; case 'numbered-paragraph': case 'paragraph': case 'heading': case 'annotation-cue': contentHtml = `<div class="form-group"><label>Text Content</label><textarea id="atom-text-editor">${atom.content.text || ''}</textarea><button id="add-glossary-term-btn" disabled style="margin-top: 8px;">Add Glossary Term</button>${glossaryListHtml}</div>`; break; case 'media': const previewImage = atom.content.src ? `<img src="${atom.content.src}" class="property-preview-image">` : '<p style="font-size:0.9em;color:#777">No image selected.</p>'; contentHtml = `<div class="form-group"><label>Image Source</label><button id="choose-image-btn">Choose Image</button>${previewImage}</div>`; break; default: contentHtml = `<p>Properties for <strong>${atom.type}</strong> atoms would go here.</p>`; } const rulesHtml = (atom.displayRules || []).map((rule, index) => { const linkedActivities = documentState.linkedActivityIds.map(id => activityLookup[id]).filter(Boolean); if (rule.isEditing) { const isAnyChecked = !Array.isArray(rule.activityId) || rule.activityId.length === 0; const activityCheckboxes = linkedActivities.map(act => { const isChecked = Array.isArray(rule.activityId) && rule.activityId.includes(act.id); return `<label><input type="checkbox" class="rule-activity-checkbox" value="${act.id}" ${isChecked ? 'checked' : ''} ${isAnyChecked ? 'disabled' : ''}> ${act.name}</label>`; }).join(''); const supportCheckboxes = documentState.availableSupportLevels.map(level => `<label><input type="checkbox" class="rule-input-checkbox" data-level="${level}" ${(rule.supportLevel || []).includes(level) ? 'checked' : ''}> ${level.replace(/-/g, ' ')}</label>`).join(''); const allChecked = documentState.availableSupportLevels.length > 0 && documentState.availableSupportLevels.every(level => (rule.supportLevel || []).includes(level)); return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Editing Criterion ${index + 1}</span><div class="actions"><button class="icon-btn save-rule-btn" title="Save Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z" /></svg></button></div></div><div class="form-group checkbox-group"><label><strong>Activity</strong></label><label><input type="checkbox" class="any-activity-checkbox" ${isAnyChecked ? 'checked' : ''}> Any Linked Activity</label><hr>${activityCheckboxes}</div><div class="form-group checkbox-group"><label><input type="checkbox" class="check-all-support" ${allChecked ? 'checked' : ''}> <strong>Support Level(s)</strong></label><div class="support-level-options">${supportCheckboxes}</div></div></div>`; } else { const activityNames = Array.isArray(rule.activityId) && rule.activityId.length > 0 ? rule.activityId.map(id => activityLookup[id]?.name || 'Unknown').join(', ') : "Any Linked Activity"; const levels = rule.supportLevel.length > 0 ? rule.supportLevel.join(', ').replace(/-/g, ' ') : "All Available Levels"; return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Criterion ${index + 1}</span><div class="actions"><button class="icon-btn edit-rule-btn" title="Edit Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button><button class="icon-btn delete-rule-btn delete" title="Delete Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg></button></div></div><p style="font-size:0.9em; margin: 0.5em 0; line-height: 1.5;"><strong>Activity:</strong> ${activityNames}<br><strong>Support:</strong> ${levels}</p></div>`; } }).join(''); propertiesContent.innerHTML = `<div class="collapsible-section ${openStates['core'] ? 'open' : ''}" data-section-id="core"><div class="collapsible-header"><h4>Core Properties</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div class="form-group"><label>Atom ID</label><input type="text" value="${atom.id}" readonly></div>${contentHtml}</div></div><div class="collapsible-section ${openStates['criteria'] ? 'open' : ''}" data-section-id="criteria"><div class="collapsible-header"><h4>Display Criteria</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div id="rules-container">${rulesHtml}</div><button id="add-rule-btn">Add Display Criterion</button></div></div><div class="collapsible-section ${openStates['metadata'] ? 'open' : ''}" data-section-id="metadata"><div class="collapsible-header"><h4>Metadata</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div><div class="collapsible-content"><div class="atom-metadata-display"></div><button class="edit-atom-metadata-btn">Edit Metadata</button></div></div><button id="delete-atom-btn" style="background-color: var(--danger-color); color: white; width: 100%; margin-top: 1rem;">Delete Atom</button>`; if (['numbered-paragraph', 'paragraph', 'heading', 'annotation-cue'].includes(atom.type)) { initializeTinyMCE(); } renderMetadataDisplay(atom, propertiesContent.querySelector('.atom-metadata-display')); }
+    function renderPropertiesPanel() {
+        const propertiesContent = document.getElementById('properties-content');
+        if (activeEditorInstance) {
+            tinymce.get(activeEditorInstance.id)?.remove();
+            activeEditorInstance = null;
+        }
+        const relationshipsPanel = document.getElementById('relationships-section');
+        
+        if (!selectedAtomId) {
+            propertiesContent.innerHTML = '<p>Select an atom to see its properties.</p>';
+            relationshipsPanel.classList.remove('is-active-context');
+            return;
+        }
+        
+        relationshipsPanel.classList.add('is-active-context');
+        const atom = documentState.atoms.find(a => a.id === selectedAtomId);
+        if (!atom) return;
+
+        let contentHtml = '';
+        let glossaryListHtml = '';
+        if (atom.glossaryEntries && atom.glossaryEntries.length > 0) {
+            const listItems = atom.glossaryEntries.sort((a, b) => a.termText.localeCompare(b.termText))
+                .map(entry => `<span class="glossary-term-list-item" data-glossary-id="${entry.id}">${entry.termText}</span>`).join('');
+            glossaryListHtml = `<div class="glossary-term-list-container"><h5>Defined Terms</h5><div class="glossary-term-list">${listItems}</div></div>`;
+        }
+
+        switch(atom.type) {
+            case 'title': contentHtml = `<p style="font-size:0.9em; color:var(--text-color-secondary)">This atom displays the Document's Title metadata. Edit this in Document Properties &gt; Metadata.</p>`; break;
+            case 'author': contentHtml = `<p style="font-size:0.9em; color:var(--text-color-secondary)">This atom displays the Document's Author and Publication Date metadata. Edit this in Document Properties &gt; Metadata.</p>`; break;
+            case 'numbered-paragraph': case 'paragraph': case 'heading': case 'annotation-cue': contentHtml = `<div class="form-group"><label>Text Content</label><textarea id="atom-text-editor">${atom.content.text || ''}</textarea><button id="add-glossary-term-btn" disabled style="margin-top: 8px;">Add Glossary Term</button>${glossaryListHtml}</div>`; break;
+            case 'media': const previewImage = atom.content.src ? `<img src="${atom.content.src}" class="property-preview-image">` : '<p style="font-size:0.9em;color:#777">No image selected.</p>'; contentHtml = `<div class="form-group"><label>Image Source</label><button id="choose-image-btn">Choose Image</button>${previewImage}</div>`; break;
+            default: contentHtml = `<p>Properties for <strong>${atom.type}</strong> atoms would go here.</p>`;
+        }
+
+        const rulesHtml = (atom.displayRules || []).map((rule, index) => {
+            const linkedActivities = documentState.linkedActivityIds.map(id => activityLookup[id]).filter(Boolean);
+            if (rule.isEditing) {
+                const isAnyChecked = !Array.isArray(rule.activityId) || rule.activityId.length === 0;
+                const activityCheckboxes = linkedActivities.map(act => { const isChecked = Array.isArray(rule.activityId) && rule.activityId.includes(act.id); return `<label><input type="checkbox" class="rule-activity-checkbox" value="${act.id}" ${isChecked ? 'checked' : ''} ${isAnyChecked ? 'disabled' : ''}> ${act.name}</label>`; }).join('');
+                const supportCheckboxes = documentState.availableSupportLevels.map(level => `<label><input type="checkbox" class="rule-input-checkbox" data-level="${level}" ${(rule.supportLevel || []).includes(level) ? 'checked' : ''}> ${level.replace(/-/g, ' ')}</label>`).join('');
+                const allChecked = documentState.availableSupportLevels.length > 0 && documentState.availableSupportLevels.every(level => (rule.supportLevel || []).includes(level));
+                return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Editing Criterion ${index + 1}</span><div class="actions"><button class="icon-btn save-rule-btn" title="Save Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z" /></svg></button></div></div><div class="form-group checkbox-group"><label><strong>Activity</strong></label><label><input type="checkbox" class="any-activity-checkbox" ${isAnyChecked ? 'checked' : ''}> Any Linked Activity</label><hr>${activityCheckboxes}</div><div class="form-group checkbox-group"><label><input type="checkbox" class="check-all-support" ${allChecked ? 'checked' : ''}> <strong>Support Level(s)</strong></label><div class="support-level-options">${supportCheckboxes}</div></div></div>`;
+            } else {
+                const activityNames = Array.isArray(rule.activityId) && rule.activityId.length > 0 ? rule.activityId.map(id => activityLookup[id]?.name || 'Unknown').join(', ') : "Any Linked Activity";
+                const levels = rule.supportLevel.length > 0 ? rule.supportLevel.join(', ').replace(/-/g, ' ') : "All Available Levels";
+                return `<div class="rule-card" data-rule-index="${index}"><div class="rule-card-header"><span class="title">Criterion ${index + 1}</span><div class="actions"><button class="icon-btn edit-rule-btn" title="Edit Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button><button class="icon-btn delete-rule-btn delete" title="Delete Rule"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" /></svg></button></div></div><p style="font-size:0.9em; margin: 0.5em 0; line-height: 1.5;"><strong>Activity:</strong> ${activityNames}<br><strong>Support:</strong> ${levels}</p></div>`;
+            }
+        }).join('');
+
+        propertiesContent.innerHTML = `
+            <div class="collapsible-section open" data-section-id="core">
+                <div class="collapsible-header"><h4>Core Properties</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div>
+                <div class="collapsible-content"><div class="form-group"><label>Atom ID</label><input type="text" value="${atom.id}" readonly></div>${contentHtml}</div>
+            </div>
+            <div class="collapsible-section open" data-section-id="criteria">
+                <div class="collapsible-header"><h4>Display Criteria</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div>
+                <div class="collapsible-content"><div id="rules-container">${rulesHtml}</div><button id="add-rule-btn">Add Display Criterion</button></div>
+            </div>
+            <div class="collapsible-section open" data-section-id="metadata">
+                <div class="collapsible-header"><h4>Metadata</h4><svg class="collapsible-toggle-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></div>
+                <div class="collapsible-content"><div class="atom-metadata-display"></div><button class="edit-atom-metadata-btn">Edit Metadata</button></div>
+            </div>
+            <button id="delete-atom-btn" style="background-color: var(--danger-color); color: white; width: 100%; margin-top: 1rem;">Delete Atom</button>`;
+
+        if (['numbered-paragraph', 'paragraph', 'heading', 'annotation-cue'].includes(atom.type)) {
+            initializeTinyMCE();
+        }
+        renderMetadataDisplay(atom, propertiesContent.querySelector('.atom-metadata-display'));
+    }
+    
     function renderMetadataDisplay(target, containerEl) { if (!containerEl) return; containerEl.innerHTML = ''; if (!target || !target.metadata || !target.metadata.length === 0) { containerEl.innerHTML = '<p style="font-size: 0.9em; color: var(--text-color-secondary);">No metadata associated.</p>'; return; } const dl = document.createElement('dl'); dl.className = 'metadata-display-list'; target.metadata.forEach(meta => { if (meta.value && meta.value.length > 0) { const dt = document.createElement('dt'); dt.textContent = meta.key; const dd = document.createElement('dd'); dd.textContent = Array.isArray(meta.value) ? meta.value.join(', ') : meta.value; dl.appendChild(dt); dl.appendChild(dd); } }); containerEl.appendChild(dl); }
-    function fullRender(isNewAtom = false) { document.getElementById('doc-id').value = documentState.id; renderLinkedActivities(); renderSupportLevels(); renderCanvasPanel(); renderPropertiesPanel(isNewAtom); renderMetadataDisplay(documentState, document.getElementById('doc-metadata-display')); }
+    
+    function fullRender() {
+        document.getElementById('doc-id').value = documentState.id;
+        renderLinkedActivities();
+        renderSupportLevels();
+        renderCanvasPanel();
+        renderPropertiesPanel();
+        renderMetadataDisplay(documentState, document.getElementById('doc-metadata-display'));
+    }
     
     function initializeTinyMCE() {
         tinymce.init({
@@ -828,35 +905,57 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         documentState.atoms.push(newAtom);
         selectedAtomId = newAtom.id;
-        fullRender(true);
+        fullRender();
     }
     
+    function selectAtom(atomId) {
+        if (selectedAtomId === atomId) return;
+        selectedAtomId = atomId;
+        
+        // Update canvas selection highlight without redrawing the whole thing
+        document.querySelectorAll('#canvas .atom').forEach(el => {
+            el.classList.toggle('selected', el.dataset.atomId === atomId);
+        });
+
+        // Only redraw the properties panel
+        renderPropertiesPanel();
+    }
+
     function checkAtomVisibility(atom) {
         if (!atom.displayRules || atom.displayRules.length === 0) {
-            return true;
+            return true; // Always show atoms with no rules
         }
 
+        // If no context is set, only show atoms with no rules (handled above)
         if (previewContext.activityIds.length === 0 && previewContext.supportLevels.length === 0) {
             return false;
         }
 
+        // Atom is visible if ANY of its rules match the context
         return atom.displayRules.some(rule => {
             const ruleActivities = (Array.isArray(rule.activityId) ? rule.activityId : (rule.activityId ? [rule.activityId] : [])).filter(Boolean);
             const ruleSupports = rule.supportLevel || [];
 
+            // Rule matches if it has no activity criteria OR its activities overlap with the context
             const activityMatch = ruleActivities.length === 0 || ruleActivities.some(id => previewContext.activityIds.includes(id));
+            
+            // Rule matches if it has no support criteria OR its supports overlap with the context
             const supportMatch = ruleSupports.length === 0 || ruleSupports.some(level => previewContext.supportLevels.includes(level));
             
+            // If context specifies BOTH, rule must match BOTH
             if (previewContext.activityIds.length > 0 && previewContext.supportLevels.length > 0) {
                 return activityMatch && supportMatch;
             }
+            // If context specifies ONLY activities, rule must match activities
             if (previewContext.activityIds.length > 0) {
                 return activityMatch;
             }
+            // If context specifies ONLY supports, rule must match supports
             if (previewContext.supportLevels.length > 0) {
                 return supportMatch;
             }
-            return false;
+            
+            return false; // Should not be reached
         });
     }
 
@@ -892,7 +991,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (target.id === 'add-atom-btn') { addAtom(); }
         else if (canvasMode === 'author') {
             const atomEl = target.closest('.atom');
-            if (atomEl) { selectedAtomId = atomEl.dataset.atomId; fullRender(); }
+            if (atomEl) { selectAtom(atomEl.dataset.atomId); }
         }
     });
 
