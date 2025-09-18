@@ -798,20 +798,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!atom.displayRules || atom.displayRules.length === 0) {
             return true;
         }
-        if (previewContext.activityIds.length === 0 && previewContext.supportLevels.length === 0) {
-            return false;
-        }
+
         return atom.displayRules.some(rule => {
-            const ruleActivities = rule.activityId || [];
+            const ruleActivities = (Array.isArray(rule.activityId) ? rule.activityId : (rule.activityId ? [rule.activityId] : [])).filter(Boolean);
             const ruleSupports = rule.supportLevel || [];
-            const activityMatch = ruleActivities.length === 0 || ruleActivities.some(id => previewContext.activityIds.includes(id));
-            const supportMatch = ruleSupports.length === 0 || ruleSupports.some(level => previewContext.supportLevels.includes(level));
-            if (previewContext.activityIds.length > 0 && previewContext.supportLevels.length > 0) {
-                return activityMatch && supportMatch;
+
+            const isRuleForAllActivities = ruleActivities.length === 0;
+            const isRuleForAllSupports = ruleSupports.length === 0;
+
+            if (previewContext.activityIds.length === 0 && previewContext.supportLevels.length === 0) {
+                return false;
             }
-            if (previewContext.activityIds.length > 0) return activityMatch;
-            if (previewContext.supportLevels.length > 0) return supportMatch;
-            return false;
+
+            let activityMatch = previewContext.activityIds.length === 0 || isRuleForAllActivities || ruleActivities.some(id => previewContext.activityIds.includes(id));
+            let supportMatch = previewContext.supportLevels.length === 0 || isRuleForAllSupports || ruleSupports.some(level => previewContext.supportLevels.includes(level));
+            
+            return activityMatch && supportMatch;
         });
     }
 
